@@ -193,6 +193,14 @@ export interface CreateTaskDto {
   subtaskNames?: string[];
 }
 
+/** Sprint goal row returned by AI bulk-import JSON (saved to sprint_goals on import). */
+export interface BulkImportSprintGoalDto {
+  sprintNumber: number;
+  goal: string;
+  /** YYYY-MM-DD; should match the sprint deadline you gave the AI */
+  sprintDueDate?: string;
+}
+
 export interface BulkImportTaskDto {
   name: string;
   notes?: string;
@@ -208,6 +216,12 @@ export interface BulkImportTaskDto {
   category?: TaskCategory;
   subtaskNames?: string[];
   assigneeNames?: string[];
+}
+
+/** Root object when the AI returns sprint goals + tasks together. */
+export interface BulkImportAiBundle {
+  sprintGoals: BulkImportSprintGoalDto[];
+  tasks: BulkImportTaskDto[];
 }
 
 export const SCHEDULE_WEEK_START = '2026-04-06';

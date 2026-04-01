@@ -13,6 +13,7 @@ import type {
   TaskRatingSummary,
   CreateTaskDto,
   BulkImportTaskDto,
+  BulkImportSprintGoalDto,
   TaskStatus,
   TaskCategory,
   ProjectSettings,
@@ -452,6 +453,24 @@ export const bulkImportTasks = async (tasks: BulkImportTaskDto[], actorId?: numb
     created.push(item);
   }
   return created;
+};
+
+/** Upsert sprint goals from AI, then create all tasks (same shape as bulkImportTasks). */
+export const bulkImportSprintBundle = async (
+  sprintGoals: BulkImportSprintGoalDto[],
+  tasks: BulkImportTaskDto[],
+  actorId?: number,
+): Promise<TaskItem[]> => {
+  for (const g of sprintGoals) {
+    const n = Number(g.sprintNumber);
+    if (!Number.isFinite(n) || n < 1) continue;
+    await upsertSprintGoal({
+      sprintNumber: n,
+      goal: (g.goal ?? '').trim(),
+      sprintDueDate: g.sprintDueDate?.trim() || undefined,
+    });
+  }
+  return bulkImportTasks(tasks, actorId);
 };
 
 export const createSubtask = async (taskId: number, name: string): Promise<SubtaskItem> => {
