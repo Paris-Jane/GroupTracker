@@ -3,7 +3,6 @@ import { bulkImportTasks } from '../../api/client';
 import type { GroupMember, BulkImportTaskDto } from '../../types';
 
 interface Props {
-  members: GroupMember[];
   currentMember: GroupMember | null;
   onClose: () => void;
   onImported: () => void;
@@ -66,7 +65,7 @@ const SAMPLE_OUTPUT = `[
   }
 ]`;
 
-export default function BulkImportModal({ members, currentMember, onClose, onImported }: Props) {
+export default function BulkImportModal({ currentMember, onClose, onImported }: Props) {
   const [step, setStep] = useState<'prompt' | 'paste' | 'preview'>('prompt');
   const [pasteText, setPasteText] = useState('');
   const [preview, setPreview] = useState<BulkImportTaskDto[]>([]);

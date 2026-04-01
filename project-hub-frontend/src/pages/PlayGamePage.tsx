@@ -134,7 +134,7 @@ function RatingFlow({ tasks, currentMember, onDone }: { tasks: TaskItem[]; curre
 
 // ── Results / Assignment screen ──────────────────────────────────────────────
 
-function ResultsScreen({ members, onAssigned }: { members: GroupMember[]; onAssigned: () => void }) {
+function ResultsScreen({ members, onAssigned: _onAssigned }: { members: GroupMember[]; onAssigned: () => void }) {
   const [summaries, setSummaries] = useState<TaskRatingSummary[]>([]);
   const [assigning, setAssigning] = useState<Record<number, boolean>>({});
 

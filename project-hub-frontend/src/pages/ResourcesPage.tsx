@@ -14,7 +14,7 @@ interface Props {
 
 // ── Quick Links ──────────────────────────────────────────────────────────────
 
-function QuickLinksSection({ currentMember }: { currentMember: GroupMember | null }) {
+function QuickLinksSection() {
   const [links, setLinks] = useState<QuickLink[]>([]);
   const [editing, setEditing] = useState<QuickLink | null | 'new'>(null);
   const [deletingId, setDeletingId] = useState<number | null>(null);
@@ -442,7 +442,7 @@ export default function ResourcesPage({ currentMember, members }: Props) {
           ))}
         </div>
 
-        {activeTab === 'links' && <QuickLinksSection currentMember={currentMember} />}
+        {activeTab === 'links' && <QuickLinksSection />}
         {activeTab === 'resources' && <ResourcesSection />}
         {activeTab === 'reservations' && <ReservationsSection members={members} currentMember={currentMember} />}
       </div>

@@ -3,9 +3,8 @@ import {
   getTasks, createTask, updateTask, deleteTask,
   updateTaskStatus, assignTask,
   createSubtask, updateSubtask, deleteSubtask,
-  bulkImportTasks,
 } from '../api/client';
-import type { TaskItem, GroupMember, TaskStatus, TaskPriority, BulkImportTaskDto, SubtaskItem } from '../types';
+import type { TaskItem, GroupMember, TaskStatus, TaskPriority, SubtaskItem } from '../types';
 import { StatusBadge, PriorityBadge, RequiredBadge } from '../components/common/StatusBadge';
 import Avatar from '../components/common/Avatar';
 import MemberSelector from '../components/common/MemberSelector';
@@ -21,7 +20,6 @@ type FilterView = 'all' | 'mine' | 'incomplete' | 'completed';
 type SortKey = 'deadline' | 'priority' | 'name' | 'updated';
 
 const PRIORITIES: TaskPriority[] = ['High', 'Medium', 'Low'];
-const STATUSES: TaskStatus[] = ['NotStarted', 'WorkingOnIt', 'Completed'];
 
 function formatDeadline(d?: string) {
   if (!d) return null;
@@ -167,7 +165,6 @@ function TaskFormModal({ task, members, onSave, onClose }: TaskFormProps) {
 
 interface TaskCardProps {
   task: TaskItem;
-  members: GroupMember[];
   currentMember: GroupMember | null;
   onEdit: () => void;
   onDelete: () => void;
@@ -178,7 +175,7 @@ interface TaskCardProps {
   onAssignSelf: () => void;
 }
 
-function TaskCard({ task, members, currentMember, onEdit, onDelete, onStatusChange, onSubtaskToggle, onSubtaskAdd, onSubtaskDelete, onAssignSelf }: TaskCardProps) {
+function TaskCard({ task, currentMember, onEdit, onDelete, onStatusChange, onSubtaskToggle, onSubtaskAdd, onSubtaskDelete, onAssignSelf }: TaskCardProps) {
   const [expanded, setExpanded] = useState(false);
   const [newSub, setNewSub] = useState('');
   const completedSubs = task.subtasks.filter(s => s.isCompleted).length;
@@ -441,7 +438,6 @@ export default function TasksPage({ currentMember, members }: Props) {
               <TaskCard
                 key={task.id}
                 task={task}
-                members={members}
                 currentMember={currentMember}
                 onEdit={() => setEditingTask(task)}
                 onDelete={() => setDeletingId(task.id)}
@@ -495,7 +491,6 @@ export default function TasksPage({ currentMember, members }: Props) {
       )}
       {showBulkImport && (
         <BulkImportModal
-          members={members}
           currentMember={currentMember}
           onClose={() => setShowBulkImport(false)}
           onImported={() => { setShowBulkImport(false); load(); }}

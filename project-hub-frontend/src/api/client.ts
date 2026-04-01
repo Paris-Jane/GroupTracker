@@ -4,7 +4,7 @@ import type {
   ResourceItem, RoomReservation, TaskUpdate,
   TaskRating, TaskRatingSummary,
   CreateTaskDto, BulkImportTaskDto,
-  TaskStatus, TaskPriority, ResourceType,
+  TaskStatus,
 } from '../types';
 
 const api = axios.create({ baseURL: 'http://localhost:5156/api' });
