@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { bulkImportTasks, bulkImportSprintBundle } from '../../api/client';
+import { bulkImportTasks, bulkImportSprintBundle, updateProjectSettings } from '../../api/client';
 import type {
   GroupMember,
   BulkImportTaskDto,
@@ -23,6 +23,7 @@ function buildAiPrompt(sprintCount: number, sprintDeadlines: string[], rubric: s
     .join('\n');
 
   const jsonExample = `{
+  "productGoal": "One clear sentence: what the team is building and for whom",
   "sprintGoals": [
     {
       "sprintNumber": 1,
@@ -55,6 +56,7 @@ SPRINT SETUP (use exactly — do not change these dates in sprintGoals):
 ${deadlineLines}
 
 Your job:
+0. Write a single "productGoal" string: the overall product outcome (what you are building and why), in plain language.
 1. Write one clear sprint goal per sprint in "sprintGoals". Each entry must include sprintNumber (1..${sprintCount}), goal (text), and sprintDueDate matching the deadline above for that sprint.
 2. Generate concrete tasks in "tasks". Every task must include "sprintNumber" (1..${sprintCount}) so it belongs to a sprint.
 3. Each task's "deadline" must be YYYY-MM-DD and must be on or before the sprintDueDate for that task's sprint.
@@ -65,7 +67,7 @@ OUTPUT FORMAT — return ONLY valid JSON (no markdown fences, no commentary) wit
 ${jsonExample}
 
 Rules:
-- Root must be a single JSON object with keys "sprintGoals" (array) and "tasks" (array).
+- Root must be a single JSON object with keys "productGoal" (string), "sprintGoals" (array), and "tasks" (array).
 - sprintGoals.length should be ${sprintCount} (one per sprint).
 - priority: only "High", "Medium", or "Low"
 - status: only "NotStarted", "InProgress", or "Completed" (default new work to "NotStarted")
@@ -79,6 +81,7 @@ ${rubric.trim() || '(The user will add details here before sending to the AI —
 }
 
 const SAMPLE_OUTPUT = `{
+  "productGoal": "A course project web app that helps teams track sprints, tasks, and reviews in one place.",
   "sprintGoals": [
     {
       "sprintNumber": 1,
@@ -209,6 +212,7 @@ export default function BulkImportModal({ currentMember, onClose, onImported }: 
   const [pasteText, setPasteText] = useState('');
   const [previewGoals, setPreviewGoals] = useState<BulkImportSprintGoalDto[]>([]);
   const [previewTasks, setPreviewTasks] = useState<BulkImportTaskDto[]>([]);
+  const [previewProductGoal, setPreviewProductGoal] = useState('');
   const [error, setError] = useState('');
   const [importing, setImporting] = useState(false);
 
@@ -235,14 +239,18 @@ export default function BulkImportModal({ currentMember, onClose, onImported }: 
 
       let goals: BulkImportSprintGoalDto[] = [];
       let tasksRaw: unknown[];
+      let productGoalFromJson = '';
 
       if (Array.isArray(parsed)) {
         tasksRaw = parsed;
       } else if (parsed && typeof parsed === 'object' && Array.isArray((parsed as { tasks?: unknown }).tasks)) {
-        const p = parsed as { tasks: unknown[]; sprintGoals?: unknown };
+        const p = parsed as { tasks: unknown[]; sprintGoals?: unknown; productGoal?: unknown };
         tasksRaw = p.tasks;
         if (Array.isArray(p.sprintGoals)) {
           goals = p.sprintGoals.map((g, i) => normalizeSprintGoal(g, i));
+        }
+        if (typeof p.productGoal === 'string' && p.productGoal.trim()) {
+          productGoalFromJson = p.productGoal.trim();
         }
       } else {
         throw new Error('Expected a JSON array of tasks, or an object with a "tasks" array.');
@@ -253,6 +261,7 @@ export default function BulkImportModal({ currentMember, onClose, onImported }: 
       const tasks = tasksRaw.map((t, i) => normalizeTask(t, i));
       setPreviewGoals(goals);
       setPreviewTasks(tasks);
+      setPreviewProductGoal(productGoalFromJson);
       setStep('preview');
     } catch (e: unknown) {
       setError(`Parse error: ${(e as Error).message}. Paste valid JSON from the AI.`);
@@ -264,9 +273,14 @@ export default function BulkImportModal({ currentMember, onClose, onImported }: 
     setError('');
     try {
       if (previewGoals.length > 0) {
-        await bulkImportSprintBundle(previewGoals, previewTasks, currentMember?.id);
+        await bulkImportSprintBundle(previewGoals, previewTasks, currentMember?.id, {
+          productGoal: previewProductGoal || undefined,
+        });
       } else {
         await bulkImportTasks(previewTasks, currentMember?.id);
+        if (previewProductGoal.trim()) {
+          await updateProjectSettings({ productGoal: previewProductGoal.trim() });
+        }
       }
       onImported();
     } catch {
@@ -444,7 +458,26 @@ export default function BulkImportModal({ currentMember, onClose, onImported }: 
                   </>
                 )}
                 {previewTasks.length} task{previewTasks.length !== 1 ? 's' : ''} will be saved.
+                {previewProductGoal && ' Product goal will be updated.'}
               </p>
+
+              {previewProductGoal && (
+                <div style={{ marginBottom: 16 }}>
+                  <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 8 }}>Product goal</div>
+                  <div
+                    style={{
+                      padding: '10px 12px',
+                      border: '1px solid var(--border)',
+                      borderRadius: 8,
+                      background: 'var(--bg)',
+                      fontSize: 13,
+                      lineHeight: 1.45,
+                    }}
+                  >
+                    {previewProductGoal}
+                  </div>
+                </div>
+              )}
 
               {previewGoals.length > 0 && (
                 <div style={{ marginBottom: 16 }}>

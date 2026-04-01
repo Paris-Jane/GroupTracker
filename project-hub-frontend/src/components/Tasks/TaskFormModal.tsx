@@ -12,19 +12,31 @@ export interface TaskFormModalProps {
   onClose: () => void;
   /** Shown only when editing an existing task; typically closes modal and opens delete confirm. */
   onDelete?: () => void;
+  /** When creating a task, pre-fill status / sprint / category (e.g. from board column). */
+  defaultsForNew?: { status?: TaskStatus; sprintNumber?: number; category?: TaskCategory };
 }
 
-export default function TaskFormModal({ task, members, onSave, onClose, onDelete }: TaskFormModalProps) {
+export default function TaskFormModal({ task, members, onSave, onClose, onDelete, defaultsForNew }: TaskFormModalProps) {
   const [name, setName] = useState(task?.name ?? '');
   const [notes, setNotes] = useState(task?.notes ?? '');
   const [estimatedTime, setEstimatedTime] = useState(task?.estimatedTime ?? '');
   const [deadline, setDeadline] = useState(task?.deadline ? task.deadline.split('T')[0] : '');
   const [priority, setPriority] = useState<TaskPriority>(task?.priority ?? 'Medium');
   const [isRequired, setIsRequired] = useState(task?.isRequired ?? true);
-  const [status, setStatus] = useState<TaskStatus>(task?.status ?? 'NotStarted');
+  const [status, setStatus] = useState<TaskStatus>(
+    task?.status ?? defaultsForNew?.status ?? 'NotStarted',
+  );
   const [tags, setTags] = useState(task?.tags ?? '');
-  const [sprintNumber, setSprintNumber] = useState(task?.sprintNumber != null ? String(task.sprintNumber) : '');
-  const [category, setCategory] = useState<TaskCategory>(task?.category ?? 'ProductBacklog');
+  const [sprintNumber, setSprintNumber] = useState(
+    task?.sprintNumber != null
+      ? String(task.sprintNumber)
+      : defaultsForNew?.sprintNumber != null
+        ? String(defaultsForNew.sprintNumber)
+        : '',
+  );
+  const [category, setCategory] = useState<TaskCategory>(
+    task?.category ?? defaultsForNew?.category ?? 'ProductBacklog',
+  );
   const [evaluation, setEvaluation] = useState(task?.evaluation != null ? String(task.evaluation) : '');
   const [definitionOfDone, setDefinitionOfDone] = useState(task?.definitionOfDone ?? '');
   const [assigneeIds, setAssigneeIds] = useState<number[]>(task?.assignments.map(a => a.groupMemberId) ?? []);

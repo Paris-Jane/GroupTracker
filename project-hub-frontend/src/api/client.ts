@@ -455,11 +455,12 @@ export const bulkImportTasks = async (tasks: BulkImportTaskDto[], actorId?: numb
   return created;
 };
 
-/** Upsert sprint goals from AI, then create all tasks (same shape as bulkImportTasks). */
+/** Upsert sprint goals from AI, optional product goal, then create all tasks (same shape as bulkImportTasks). */
 export const bulkImportSprintBundle = async (
   sprintGoals: BulkImportSprintGoalDto[],
   tasks: BulkImportTaskDto[],
   actorId?: number,
+  options?: { productGoal?: string },
 ): Promise<TaskItem[]> => {
   for (const g of sprintGoals) {
     const n = Number(g.sprintNumber);
@@ -470,6 +471,8 @@ export const bulkImportSprintBundle = async (
       sprintDueDate: g.sprintDueDate?.trim() || undefined,
     });
   }
+  const pg = options?.productGoal?.trim();
+  if (pg) await updateProjectSettings({ productGoal: pg });
   return bulkImportTasks(tasks, actorId);
 };
 
@@ -547,6 +550,11 @@ export async function upsertSprintGoal(g: SprintGoal): Promise<void> {
     sprint_due_date: g.sprintDueDate ?? null,
   });
   if (error) err(error, 'Failed to save sprint goal');
+}
+
+export async function deleteSprintGoal(sprintNumber: number): Promise<void> {
+  const { error } = await supabase.from('sprint_goals').delete().eq('sprint_number', sprintNumber);
+  if (error) err(error, 'Failed to delete sprint goal');
 }
 
 export async function getSprintReviews(sprintNumber: number): Promise<SprintReview[]> {

@@ -220,6 +220,8 @@ export interface BulkImportTaskDto {
 
 /** Root object when the AI returns sprint goals + tasks together. */
 export interface BulkImportAiBundle {
+  /** Overall product vision; saved to project_settings.product_goal on import when present. */
+  productGoal?: string;
   sprintGoals: BulkImportSprintGoalDto[];
   tasks: BulkImportTaskDto[];
 }
