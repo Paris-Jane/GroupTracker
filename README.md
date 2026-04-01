@@ -55,7 +55,12 @@ Open **http://localhost:5173**.
 
 ### Deploy (Vercel)
 
-Set environment variables `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`, with **Root Directory** `project-hub-frontend` if the repo includes this folder only as a subpath.
+1. Add env vars `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` (Production + Preview).
+2. **Either:**
+   - Leave **Root Directory** empty (repo root). The root `vercel.json` builds `project-hub-frontend` and uses `project-hub-frontend/dist`, **or**
+   - Set **Root Directory** to `project-hub-frontend` and clear any custom **Output Directory** in the dashboard so it stays `dist` (uses `project-hub-frontend/vercel.json`).
+
+Do not set Root Directory to the repo root *and* leave Output Directory as `dist` only — that looks for `./dist` at the repo root and yields a 404.
 
 ---
 

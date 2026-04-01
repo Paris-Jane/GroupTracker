@@ -1,0 +1,6 @@
+{
+  "installCommand": "cd project-hub-frontend && npm install",
+  "buildCommand": "cd project-hub-frontend && npm run build",
+  "outputDirectory": "project-hub-frontend/dist",
+  "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]
+}
