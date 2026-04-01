@@ -1,3 +1,0 @@
-﻿<Project>
-  <Import Project="../build/ProjectHub.API.props" />
-</Project>
