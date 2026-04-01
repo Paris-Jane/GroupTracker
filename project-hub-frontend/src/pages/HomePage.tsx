@@ -212,7 +212,6 @@ export default function HomePage() {
   }, [tasks, user]);
 
   const upcoming = useMemo(() => {
-    const now = new Date();
     return tasks
       .filter(t => {
         if (t.status === 'Completed' || !t.deadline) return false;

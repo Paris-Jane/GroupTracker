@@ -56,10 +56,7 @@ function endOfLocalDayFromIso(s: string) {
 }
 
 /** Active sprint = first sprint (by number) whose end date is still today or in the future; else highest known sprint. */
-function inferCurrentSprintNumber(
-  goals: Awaited<ReturnType<typeof getSprintGoals>>,
-  tasks: TaskItem[],
-): number {
+function inferCurrentSprintNumber(goals: SprintGoal[], tasks: TaskItem[]): number {
   const taskMax = Math.max(0, ...tasks.map(t => t.sprintNumber ?? 0));
   const goalNums = goals.map(g => g.sprintNumber);
   const floor = Math.max(1, taskMax, ...goalNums, 1);

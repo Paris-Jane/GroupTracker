@@ -1832,14 +1832,6 @@ tr:hover td { background: var(--surface-hover); }
   border-radius: var(--radius);
 }
 
-.scrum-task-card {
-  cursor: grab;
-}
-
-.scrum-task-card:active {
-  cursor: grabbing;
-}
-
 .scrum-context-menu {
   position: fixed;
   z-index: 4000;
@@ -1941,6 +1933,11 @@ tr:hover td { background: var(--surface-hover); }
   border-radius: var(--radius);
   padding: 10px 12px;
   box-shadow: var(--shadow);
+  cursor: grab;
+}
+
+.scrum-task-card:active {
+  cursor: grabbing;
 }
 
 .scrum-task-title {
