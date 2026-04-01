@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   getTasks,
   getProjectSettings,
@@ -8,7 +8,6 @@ import {
   deleteSprintGoal,
   getSprintReviews,
   addSprintReview,
-  toggleAcceptedByPO,
   updateTaskStatus,
   createTask,
   updateTask,
@@ -38,6 +37,24 @@ function statusForCol(col: 'todo' | 'progress' | 'done'): TaskStatus {
   return 'NotStarted';
 }
 
+function nextTaskStatus(s: TaskStatus): TaskStatus {
+  if (s === 'NotStarted') return 'InProgress';
+  if (s === 'InProgress') return 'Completed';
+  return 'NotStarted';
+}
+
+function statusChipLabel(s: TaskStatus) {
+  if (s === 'NotStarted') return 'To do';
+  if (s === 'InProgress') return 'In progress';
+  return 'Done';
+}
+
+function statusVisualClass(s: TaskStatus) {
+  if (s === 'Completed') return 'completed';
+  if (s === 'InProgress') return 'inprogress';
+  return 'notstarted';
+}
+
 function parseLocalDate(s: string) {
   const [y, m, d] = s.split('T')[0].split('-').map(Number);
   return new Date(y, m - 1, d);
@@ -55,7 +72,6 @@ function endOfLocalDayFromIso(s: string) {
   return x.getTime();
 }
 
-/** Active sprint = first sprint (by number) whose end date is still today or in the future; else highest known sprint. */
 function inferCurrentSprintNumber(goals: SprintGoal[], tasks: TaskItem[]): number {
   const taskMax = Math.max(0, ...tasks.map(t => t.sprintNumber ?? 0));
   const goalNums = goals.map(g => g.sprintNumber);
@@ -73,11 +89,6 @@ function inferCurrentSprintNumber(goals: SprintGoal[], tasks: TaskItem[]): numbe
 }
 
 type BoardCol = 'todo' | 'progress' | 'done';
-
-type CtxMenu =
-  | { clientX: number; clientY: number; kind: 'product' }
-  | { clientX: number; clientY: number; kind: 'sprint' }
-  | { clientX: number; clientY: number; kind: 'task'; taskId: number };
 
 export default function ScrumPage({ currentMember, members }: Props) {
   const [tasks, setTasks] = useState<TaskItem[]>([]);
@@ -97,7 +108,6 @@ export default function ScrumPage({ currentMember, members }: Props) {
   const [sprintGoalDraft, setSprintGoalDraft] = useState('');
   const [sprintDueDraft, setSprintDueDraft] = useState('');
 
-  const [ctxMenu, setCtxMenu] = useState<CtxMenu | null>(null);
   const [dragOver, setDragOver] = useState<BoardCol | null>(null);
   const [editingTask, setEditingTask] = useState<TaskItem | null | 'new'>(null);
   const [newTaskDefaults, setNewTaskDefaults] = useState<{
@@ -108,9 +118,7 @@ export default function ScrumPage({ currentMember, members }: Props) {
     null | { type: 'product' } | { type: 'sprint' } | { type: 'task'; id: number }
   >(null);
 
-  const sprintStripRef = useRef<HTMLDivElement>(null);
   const autoSprintSet = useRef(false);
-
   const todayMatchSprint = useMemo(() => inferCurrentSprintNumber(sprintGoals, tasks), [sprintGoals, tasks]);
 
   const loadTasks = () => getTasks().then(setTasks);
@@ -143,8 +151,7 @@ export default function ScrumPage({ currentMember, members }: Props) {
   useEffect(() => {
     if (autoSprintSet.current) return;
     if (tasks.length === 0 && sprintGoals.length === 0) return;
-    const n = inferCurrentSprintNumber(sprintGoals, tasks);
-    setSprintNum(n);
+    setSprintNum(inferCurrentSprintNumber(sprintGoals, tasks));
     autoSprintSet.current = true;
   }, [tasks, sprintGoals]);
 
@@ -175,20 +182,9 @@ export default function ScrumPage({ currentMember, members }: Props) {
 
   const doneCount = columns.done.length;
   const totalSprint = sprintTasks.length;
-
-  useEffect(() => {
-    if (!ctxMenu) return;
-    const onDown = (e: MouseEvent) => {
-      const el = e.target as HTMLElement;
-      if (el.closest('.scrum-context-menu')) return;
-      setCtxMenu(null);
-    };
-    document.addEventListener('mousedown', onDown);
-    return () => document.removeEventListener('mousedown', onDown);
-  }, [ctxMenu]);
+  const progressPct = totalSprint === 0 ? 0 : Math.round((doneCount / totalSprint) * 100);
 
   const openProductModal = () => {
-    setCtxMenu(null);
     if (settings) {
       setProductGoalDraft(settings.productGoal);
       setWebsiteDraft(settings.websiteUrl ?? '');
@@ -213,7 +209,6 @@ export default function ScrumPage({ currentMember, members }: Props) {
   };
 
   const openSprintGoalModal = () => {
-    setCtxMenu(null);
     setSprintGoalDraft(currentGoal?.goal ?? '');
     setSprintDueDraft(currentGoal?.sprintDueDate?.split('T')[0] ?? '');
     setSprintGoalModalOpen(true);
@@ -227,10 +222,6 @@ export default function ScrumPage({ currentMember, members }: Props) {
     });
     setSprintGoalModalOpen(false);
     loadGoals();
-  };
-
-  const scrollSprints = (dir: -1 | 1) => {
-    sprintStripRef.current?.scrollBy({ left: dir * 140, behavior: 'smooth' });
   };
 
   const handleDrop = async (col: BoardCol, e: React.DragEvent) => {
@@ -270,134 +261,154 @@ export default function ScrumPage({ currentMember, members }: Props) {
   };
 
   const productGoalText = settings?.productGoal?.trim() ?? '';
+  const dueLabel = formatDue(currentGoal?.sprintDueDate);
+  const dueIso = currentGoal?.sprintDueDate?.split('T')[0];
 
-  const onProductContextMenu = (e: React.MouseEvent) => {
-    e.preventDefault();
-    setCtxMenu({ clientX: e.clientX, clientY: e.clientY, kind: 'product' });
+  const openCardEdit = (e: React.MouseEvent, task: TaskItem) => {
+    if ((e.target as HTMLElement).closest('[data-sprint-stop]')) return;
+    setEditingTask(task);
   };
 
-  const onSprintGoalContextMenu = (e: React.MouseEvent) => {
-    e.preventDefault();
-    setCtxMenu({ clientX: e.clientX, clientY: e.clientY, kind: 'sprint' });
-  };
-
-  const onTaskContextMenu = (e: React.MouseEvent, taskId: number) => {
-    e.preventDefault();
+  const cycleTaskStatus = async (task: TaskItem, e: React.MouseEvent) => {
     e.stopPropagation();
-    setCtxMenu({ clientX: e.clientX, clientY: e.clientY, kind: 'task', taskId });
+    await updateTaskStatus(task.id, nextTaskStatus(task.status), currentMember?.id);
+    loadTasks();
   };
-
-  const menuPosition = useCallback((m: CtxMenu) => {
-    const pad = 8;
-    const w = 160;
-    const h = 88;
-    let left = m.clientX;
-    let top = m.clientY;
-    if (left + w > window.innerWidth - pad) left = window.innerWidth - w - pad;
-    if (top + h > window.innerHeight - pad) top = window.innerHeight - h - pad;
-    return { left, top };
-  }, []);
 
   return (
-    <div className="page">
-      <header className="page-title-block">
-        <h1 className="page-title">Sprint</h1>
-        <p className="page-subtitle">Product goal, sprint focus, board, and reviews</p>
+    <div className="page sprint-page">
+      {/* 1. Page header */}
+      <header className="sprint-header">
+        <div className="sprint-header-main">
+          <h1 className="sprint-header-title">Sprint {sprintNum}</h1>
+          <p className="sprint-header-sub">
+            {dueLabel ? (
+              <>
+                Due{' '}
+                <time dateTime={dueIso ?? undefined}>{dueLabel}</time>
+              </>
+            ) : (
+              <span>No deadline set — use Edit sprint to add one</span>
+            )}
+            {sprintNum === todayMatchSprint && (
+              <span className="sprint-header-pill" title="This sprint matches today’s date range">
+                Current
+              </span>
+            )}
+          </p>
+        </div>
+        <div className="sprint-header-progress" role="group" aria-label="Sprint completion">
+          <div className="sprint-header-progress-labels">
+            <span>
+              {totalSprint === 0 ? 'No tasks in this sprint' : `${doneCount} of ${totalSprint} tasks complete`}
+            </span>
+            {totalSprint > 0 && <span className="sprint-header-progress-pct">{progressPct}%</span>}
+          </div>
+          <div
+            className="sprint-progress-track"
+            role="progressbar"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={progressPct}
+            aria-label={`${progressPct} percent of sprint tasks complete`}
+          >
+            <div className="sprint-progress-fill" style={{ width: `${progressPct}%` }} />
+          </div>
+        </div>
       </header>
 
-      <section className="panel scrum-product-block">
-        <h2 className="panel-heading">Product goal</h2>
-        {productGoalText ? (
-          <div
-            className="scrum-product-goal-display"
-            onContextMenu={onProductContextMenu}
-            role="presentation"
-          >
-            <p className="scrum-product-goal-text">{productGoalText}</p>
-            <p className="text-muted text-xs scrum-ctx-hint">Right-click to edit or delete</p>
-          </div>
-        ) : (
-          <div className="scrum-product-empty">
-            <p className="text-muted text-sm">No product goal yet. Add one here, or run an AI task import that includes a product goal.</p>
+      {/* 2. Product goal */}
+      <section className="sprint-section sprint-product" aria-labelledby="sprint-product-heading">
+        <h2 id="sprint-product-heading" className="sprint-section-label">
+          Product goal
+        </h2>
+        <div className="sprint-product-inner">
+          <p className="sprint-product-body">{productGoalText || 'Not set yet. Add a short statement of what you are building.'}</p>
+          <div className="sprint-product-actions">
             <button type="button" className="btn btn-secondary btn-sm" onClick={openProductModal}>
-              Add product goal
+              {productGoalText ? 'Edit goal' : 'Add goal'}
             </button>
+            {productGoalText ? (
+              <button type="button" className="btn btn-ghost btn-sm text-danger" onClick={() => setDeleteConfirm({ type: 'product' })}>
+                Clear goal
+              </button>
+            ) : null}
           </div>
-        )}
+        </div>
       </section>
 
-      <section className="panel">
-        <div className="scrum-sprint-header">
-          <button type="button" className="btn btn-ghost btn-sm scrum-sprint-nav" aria-label="Scroll sprints left" onClick={() => scrollSprints(-1)}>
-            ‹
-          </button>
-          <div className="scrum-sprint-strip-wrap" ref={sprintStripRef}>
-            <div className="scrum-sprint-strip">
-              {Array.from({ length: maxSprint }, (_, i) => i + 1).map(n => (
-                <button
-                  key={n}
-                  type="button"
-                  className={`scrum-sprint-pill${n === sprintNum ? ' is-active' : ''}${n === todayMatchSprint ? ' is-calendar-match' : ''}`}
-                  onClick={() => setSprintNum(n)}
-                >
-                  Sprint {n}
-                </button>
-              ))}
+      {/* 3. Sprint navigation */}
+      <nav className="sprint-tabs-wrap" aria-label="Sprint selection">
+        <div className="sprint-tabs" role="tablist">
+          {Array.from({ length: maxSprint }, (_, i) => i + 1).map(n => (
+            <button
+              key={n}
+              type="button"
+              role="tab"
+              aria-selected={n === sprintNum}
+              className={`sprint-tab${n === sprintNum ? ' is-active' : ''}${n === todayMatchSprint && n !== sprintNum ? ' is-suggested' : ''}`}
+              onClick={() => setSprintNum(n)}
+            >
+              Sprint {n}
+            </button>
+          ))}
+        </div>
+      </nav>
+
+      {/* 4. Sprint summary strip */}
+      <section className="sprint-overview" aria-label="Sprint summary">
+        <div className="sprint-overview-inner">
+          <div className="sprint-overview-grid">
+            <div className="sprint-overview-cell">
+              <span className="sprint-overview-label">Sprint goal</span>
+              <p className="sprint-overview-value">{currentGoal?.goal?.trim() || '—'}</p>
+            </div>
+            <div className="sprint-overview-cell">
+              <span className="sprint-overview-label">Deadline</span>
+              <p className="sprint-overview-value">{dueLabel || '—'}</p>
+            </div>
+            <div className="sprint-overview-cell">
+              <span className="sprint-overview-label">Progress</span>
+              <p className="sprint-overview-value">
+                {totalSprint === 0 ? '—' : `${doneCount} of ${totalSprint} complete`}
+              </p>
             </div>
           </div>
-          <button type="button" className="btn btn-ghost btn-sm scrum-sprint-nav" aria-label="Scroll sprints right" onClick={() => scrollSprints(1)}>
-            ›
-          </button>
-        </div>
-        <p className="text-muted text-sm mb-3">
-          {doneCount} of {totalSprint || '—'} tasks complete in this sprint · pills marked for the sprint that matches today&apos;s date
-        </p>
-
-        <div
-          className="scrum-sprint-goal-display"
-          onContextMenu={onSprintGoalContextMenu}
-          role="presentation"
-        >
-          <div className="scrum-sprint-goal-row">
-            <span className="scrum-sprint-goal-label">Sprint goal</span>
-            <p className="scrum-sprint-goal-body">{currentGoal?.goal?.trim() || '— No goal set —'}</p>
+          <div className="sprint-overview-actions">
+            <button type="button" className="btn btn-secondary btn-sm" onClick={openSprintGoalModal}>
+              Edit sprint
+            </button>
+            {currentGoal ? (
+              <button type="button" className="btn btn-ghost btn-sm text-danger" onClick={() => setDeleteConfirm({ type: 'sprint' })}>
+                Remove sprint goal
+              </button>
+            ) : null}
           </div>
-          <div className="scrum-sprint-goal-row">
-            <span className="scrum-sprint-goal-label">Deadline</span>
-            <p className="scrum-sprint-goal-body">{formatDue(currentGoal?.sprintDueDate) || '—'}</p>
-          </div>
-          <p className="text-muted text-xs scrum-ctx-hint">Right-click to edit or delete</p>
         </div>
       </section>
 
-      <section className="panel panel--flush">
-        <h2 className="panel-heading px-panel">Board</h2>
-        <p className="text-muted text-sm px-panel mb-2">Drag cards between columns. Right-click a card to edit or delete. Use + to add a task to a column.</p>
-        <div className="scrum-board scrum-board--minimal">
+      {/* 5. Kanban */}
+      <section className="sprint-section sprint-board-wrap" aria-labelledby="sprint-board-heading">
+        <h2 id="sprint-board-heading" className="sprint-board-section-title">
+          Board
+        </h2>
+        <div className="sprint-kanban">
           {(
             [
-              ['todo', 'To do', columns.todo],
-              ['progress', 'In progress', columns.progress],
-              ['done', 'Done', columns.done],
+              ['todo', 'To do', columns.todo] as const,
+              ['progress', 'In progress', columns.progress] as const,
+              ['done', 'Done', columns.done] as const,
             ] as const
           ).map(([key, title, list]) => (
-            <div key={key} className="scrum-col">
-              <div className="scrum-col-head scrum-col-head--with-action">
-                <span>
-                  {title}
-                  <span className="scrum-col-count">{list.length}</span>
+            <div key={key} className={`sprint-column sprint-column--${key}`}>
+              <header className={`sprint-column-head sprint-column-head--${key}`}>
+                <span className="sprint-column-title">{title}</span>
+                <span className="sprint-column-count" aria-label={`${list.length} tasks`}>
+                  {list.length}
                 </span>
-                <button
-                  type="button"
-                  className="btn btn-ghost btn-xs scrum-col-add"
-                  aria-label={`Add task to ${title}`}
-                  onClick={() => openNewTask(key)}
-                >
-                  +
-                </button>
-              </div>
+              </header>
               <div
-                className={`scrum-col-body${dragOver === key ? ' scrum-col-body--drag-over' : ''}`}
+                className={`sprint-column-body${dragOver === key ? ' is-drag-over' : ''}`}
                 onDragOver={e => {
                   e.preventDefault();
                   e.dataTransfer.dropEffect = 'move';
@@ -408,26 +419,48 @@ export default function ScrumPage({ currentMember, members }: Props) {
                 }}
                 onDrop={e => handleDrop(key, e)}
               >
-                {list.length === 0 ? (
-                  <p className="scrum-col-empty">Drop tasks here</p>
-                ) : (
-                  list.map(t => (
-                    <div
-                      key={t.id}
-                      className="scrum-task-card"
-                      draggable
-                      onDragStart={e => {
-                        e.dataTransfer.setData('application/task-id', String(t.id));
-                        e.dataTransfer.setData('text/plain', String(t.id));
-                        e.dataTransfer.effectAllowed = 'move';
-                      }}
-                      onDragEnd={() => setDragOver(null)}
-                      onContextMenu={e => onTaskContextMenu(e, t.id)}
-                      role="presentation"
-                    >
-                      <p className="scrum-task-title">{t.name}</p>
-                      {t.assignments.length > 0 && (
-                        <div className="scrum-task-avatars">
+                {list.length === 0 ? <p className="sprint-column-empty">No tasks</p> : null}
+                {list.map(t => (
+                  <div
+                    key={t.id}
+                    className="sprint-card"
+                    draggable
+                    onDragStart={e => {
+                      e.dataTransfer.setData('application/task-id', String(t.id));
+                      e.dataTransfer.setData('text/plain', String(t.id));
+                      e.dataTransfer.effectAllowed = 'move';
+                    }}
+                    onDragEnd={() => setDragOver(null)}
+                    onClick={e => openCardEdit(e, t)}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        setEditingTask(t);
+                      }
+                    }}
+                    role="button"
+                    tabIndex={0}
+                    aria-label={`${t.name}. ${statusChipLabel(t.status)}. Click to edit.`}
+                  >
+                    <div className="sprint-card-top">
+                      <h3 className="sprint-card-title">{t.name}</h3>
+                      <button
+                        type="button"
+                        className="sprint-card-delete"
+                        data-sprint-stop
+                        aria-label={`Delete ${t.name}`}
+                        onClick={e => {
+                          e.stopPropagation();
+                          setDeleteConfirm({ type: 'task', id: t.id });
+                        }}
+                      >
+                        Delete
+                      </button>
+                    </div>
+                    {t.assignments.length > 0 ? (
+                      <div className="sprint-card-meta">
+                        <span className="sprint-card-meta-label">Assigned</span>
+                        <div className="sprint-card-avatars">
                           {t.assignments.slice(0, 4).map(a => (
                             <Avatar
                               key={a.id}
@@ -438,150 +471,84 @@ export default function ScrumPage({ currentMember, members }: Props) {
                             />
                           ))}
                         </div>
-                      )}
-                      <label className="scrum-po" onClick={e => e.stopPropagation()} onContextMenu={e => e.stopPropagation()}>
-                        <input
-                          type="checkbox"
-                          checked={t.acceptedByPO}
-                          onChange={async e => {
-                            await toggleAcceptedByPO(t.id, e.target.checked, currentMember?.id);
-                            loadTasks();
-                          }}
-                        />
-                        PO ok
-                      </label>
+                      </div>
+                    ) : null}
+                    <div className="sprint-card-footer">
+                      <button
+                        type="button"
+                        data-sprint-stop
+                        className={`task-status-chip task-status-chip--${statusVisualClass(t.status)} sprint-card-status`}
+                        onClick={e => cycleTaskStatus(t, e)}
+                        aria-label={`Status: ${statusChipLabel(t.status)}. Click for next status.`}
+                      >
+                        {statusChipLabel(t.status)}
+                      </button>
                     </div>
-                  ))
-                )}
+                  </div>
+                ))}
+              </div>
+              <div className="sprint-column-footer">
+                <button type="button" className="btn btn-secondary btn-sm sprint-add-task" onClick={() => openNewTask(key)}>
+                  + Add task
+                </button>
               </div>
             </div>
           ))}
         </div>
       </section>
 
-      <section className="panel">
-        <h2 className="panel-heading">Sprint reviews</h2>
-        <div className="form-row">
-          <label>Add note</label>
+      {/* 6. Sprint notes */}
+      <section className="sprint-section sprint-notes" aria-labelledby="sprint-notes-heading">
+        <h2 id="sprint-notes-heading" className="sprint-section-label">
+          Sprint notes
+        </h2>
+        <div className="sprint-notes-compose">
           <textarea
+            className="sprint-notes-input"
             rows={2}
             value={reviewBody}
             onChange={e => setReviewBody(e.target.value)}
-            placeholder="What went well, what to improve"
+            placeholder="What went well, what to improve…"
             disabled={!currentMember}
           />
+          <button
+            type="button"
+            className="btn btn-primary btn-sm sprint-notes-post"
+            disabled={!currentMember || !reviewBody.trim()}
+            onClick={async () => {
+              if (!currentMember || !reviewBody.trim()) return;
+              await addSprintReview(sprintNum, currentMember.id, reviewBody.trim());
+              setReviewBody('');
+              loadReviews();
+            }}
+          >
+            Post note
+          </button>
         </div>
-        <button
-          type="button"
-          className="btn btn-secondary btn-sm mb-3"
-          disabled={!currentMember || !reviewBody.trim()}
-          onClick={async () => {
-            if (!currentMember || !reviewBody.trim()) return;
-            await addSprintReview(sprintNum, currentMember.id, reviewBody.trim());
-            setReviewBody('');
-            loadReviews();
-          }}
-        >
-          Post
-        </button>
-        <ul className="reviews-minimal">
+        <ul className="sprint-notes-list">
           {reviews.map(r => (
-            <li key={r.id} className="reviews-minimal-item">
+            <li key={r.id} className="sprint-notes-item">
               <UserAvatar member={{ name: r.memberName, color: r.memberColor, avatarInitial: r.memberAvatarInitial }} size="sm" />
-              <div>
-                <div className="reviews-minimal-meta">
-                  <span>{r.memberName}</span>
-                  <time className="text-muted text-xs">{new Date(r.createdAt).toLocaleDateString()}</time>
+              <div className="sprint-notes-item-body">
+                <div className="sprint-notes-item-meta">
+                  <span className="sprint-notes-item-name">{r.memberName}</span>
+                  <time className="sprint-notes-item-date" dateTime={r.createdAt}>
+                    {new Date(r.createdAt).toLocaleDateString()}
+                  </time>
                 </div>
-                <p className="reviews-minimal-body">{r.content}</p>
+                <p className="sprint-notes-item-text">{r.content}</p>
               </div>
             </li>
           ))}
         </ul>
-        {reviews.length === 0 && <p className="panel-empty">No reviews yet.</p>}
+        {reviews.length === 0 ? <p className="sprint-notes-empty text-muted text-sm">No notes yet for this sprint.</p> : null}
       </section>
-
-      {ctxMenu && (
-        <div
-          className="scrum-context-menu"
-          style={menuPosition(ctxMenu)}
-          role="menu"
-          onMouseDown={e => e.stopPropagation()}
-        >
-          {ctxMenu.kind === 'product' && (
-            <>
-              <button type="button" role="menuitem" className="scrum-context-menu-item" onClick={openProductModal}>
-                Edit
-              </button>
-              <button
-                type="button"
-                role="menuitem"
-                className="scrum-context-menu-item scrum-context-menu-item--danger"
-                onClick={() => {
-                  setCtxMenu(null);
-                  setDeleteConfirm({ type: 'product' });
-                }}
-                disabled={!productGoalText}
-              >
-                Delete
-              </button>
-            </>
-          )}
-          {ctxMenu.kind === 'sprint' && (
-            <>
-              <button type="button" role="menuitem" className="scrum-context-menu-item" onClick={openSprintGoalModal}>
-                Edit
-              </button>
-              <button
-                type="button"
-                role="menuitem"
-                className="scrum-context-menu-item scrum-context-menu-item--danger"
-                onClick={() => {
-                  setCtxMenu(null);
-                  setDeleteConfirm({ type: 'sprint' });
-                }}
-                disabled={!currentGoal}
-              >
-                Delete
-              </button>
-            </>
-          )}
-          {ctxMenu.kind === 'task' && (
-            <>
-              <button
-                type="button"
-                role="menuitem"
-                className="scrum-context-menu-item"
-                onClick={() => {
-                  const task = tasks.find(x => x.id === ctxMenu.taskId);
-                  setCtxMenu(null);
-                  if (task) setEditingTask(task);
-                }}
-              >
-                Edit
-              </button>
-              <button
-                type="button"
-                role="menuitem"
-                className="scrum-context-menu-item scrum-context-menu-item--danger"
-                onClick={() => {
-                  const id = ctxMenu.taskId;
-                  setCtxMenu(null);
-                  setDeleteConfirm({ type: 'task', id });
-                }}
-              >
-                Delete
-              </button>
-            </>
-          )}
-        </div>
-      )}
 
       {productModalOpen && (
         <div className="modal-overlay">
           <div className="modal modal-lg">
             <div className="modal-header">
-              <span className="modal-title">Product</span>
+              <span className="modal-title">Product goal &amp; links</span>
               <button type="button" className="btn btn-ghost btn-sm" onClick={() => setProductModalOpen(false)}>
                 Close
               </button>
@@ -624,18 +591,18 @@ export default function ScrumPage({ currentMember, members }: Props) {
         <div className="modal-overlay">
           <div className="modal">
             <div className="modal-header">
-              <span className="modal-title">Sprint {sprintNum} goal</span>
+              <span className="modal-title">Sprint {sprintNum}</span>
               <button type="button" className="btn btn-ghost btn-sm" onClick={() => setSprintGoalModalOpen(false)}>
                 Close
               </button>
             </div>
             <div className="modal-body">
               <div className="form-row">
-                <label>Goal</label>
+                <label>Sprint goal</label>
                 <textarea rows={3} value={sprintGoalDraft} onChange={e => setSprintGoalDraft(e.target.value)} placeholder="Focus for this sprint" />
               </div>
               <div className="form-row">
-                <label>Sprint deadline</label>
+                <label>Deadline</label>
                 <input type="date" value={sprintDueDraft} onChange={e => setSprintDueDraft(e.target.value)} />
               </div>
             </div>
@@ -680,7 +647,7 @@ export default function ScrumPage({ currentMember, members }: Props) {
 
       {deleteConfirm?.type === 'product' && (
         <ConfirmDialog
-          message="Clear the product goal? Website and GitHub links are kept unless you remove them in the editor."
+          message="Clear the product goal? Website and GitHub links stay as they are until you change them in Edit goal."
           onConfirm={async () => {
             setSavingSettings(true);
             try {
@@ -697,7 +664,7 @@ export default function ScrumPage({ currentMember, members }: Props) {
       )}
       {deleteConfirm?.type === 'sprint' && (
         <ConfirmDialog
-          message={`Delete the saved goal and deadline for sprint ${sprintNum}?`}
+          message={`Remove the saved sprint goal and deadline for sprint ${sprintNum}?`}
           onConfirm={async () => {
             await deleteSprintGoal(sprintNum);
             setDeleteConfirm(null);

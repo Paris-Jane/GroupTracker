@@ -24,6 +24,7 @@
   --status-done: #16a34a;
   --purple: #7c3aed;
   --radius: 6px;
+  --radius-md: 8px;
   --radius-lg: 10px;
   --shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
   --shadow-md: 0 4px 14px rgba(0, 0, 0, 0.06);
@@ -1695,308 +1696,546 @@ tr:hover td { background: var(--surface-hover); }
   font-weight: 600;
 }
 
-/* Sprint (Scrum) page */
-.scrum-product-goal-display {
-  padding: 14px 16px;
-  border-radius: var(--radius-lg);
-  border: 1px solid var(--border);
-  background: var(--surface-hover);
+/* ── Sprint page (dashboard) ───────────────────────────────────────────────── */
+.sprint-page {
+  max-width: var(--page-max);
+  margin: 0 auto;
+  gap: 32px;
 }
 
-.scrum-product-goal-text {
-  margin: 0;
-  font-size: 15px;
-  line-height: 1.5;
-  color: var(--text);
-}
-
-.scrum-product-empty {
+.sprint-header {
   display: flex;
-  flex-direction: column;
+  flex-wrap: wrap;
   align-items: flex-start;
-  gap: 12px;
+  justify-content: space-between;
+  gap: 24px 32px;
+  padding-bottom: 24px;
+  border-bottom: 1px solid var(--border);
 }
 
-.scrum-ctx-hint {
-  margin: 8px 0 0;
+.sprint-header-main {
+  min-width: min(100%, 320px);
 }
 
-.scrum-sprint-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 8px;
-}
-
-.scrum-sprint-nav {
-  flex-shrink: 0;
-  font-size: 18px;
-  line-height: 1;
-  padding: 4px 10px;
-}
-
-.scrum-sprint-strip-wrap {
-  flex: 1;
-  min-width: 0;
-  overflow-x: auto;
-  scrollbar-width: thin;
-}
-
-.scrum-sprint-strip {
-  display: flex;
-  flex-wrap: nowrap;
-  gap: 8px;
-  padding: 4px 2px 8px;
-}
-
-.scrum-sprint-pill {
-  flex-shrink: 0;
-  border: 1px solid var(--border);
-  background: var(--surface);
-  color: var(--text-muted);
-  font-size: 13px;
-  font-weight: 500;
-  padding: 8px 14px;
-  border-radius: 999px;
-  cursor: pointer;
-}
-
-.scrum-sprint-pill:hover {
+.sprint-header-title {
+  margin: 0 0 8px;
+  font-size: 1.75rem;
+  font-weight: 650;
+  letter-spacing: -0.03em;
   color: var(--text);
-  border-color: var(--text-muted);
+  line-height: 1.2;
 }
 
-.scrum-sprint-pill.is-active {
-  color: var(--primary);
-  border-color: var(--primary);
-  background: color-mix(in srgb, var(--primary) 12%, var(--surface));
-  font-weight: 600;
+.sprint-header-sub {
+  margin: 0;
+  font-size: 14px;
+  color: var(--text-muted);
+  line-height: 1.5;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
 }
 
-.scrum-sprint-pill.is-calendar-match:not(.is-active) {
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary) 35%, transparent);
+.sprint-header-sub time {
+  color: var(--text);
+  font-weight: 500;
 }
 
-.scrum-sprint-goal-display {
-  padding: 14px 16px;
-  border-radius: var(--radius-lg);
-  border: 1px dashed var(--border);
-  background: var(--surface);
-}
-
-.scrum-sprint-goal-row {
-  display: grid;
-  grid-template-columns: 100px 1fr;
-  gap: 12px;
-  align-items: start;
-  margin-bottom: 10px;
-}
-
-.scrum-sprint-goal-row:last-of-type {
-  margin-bottom: 0;
-}
-
-.scrum-sprint-goal-label {
+.sprint-header-pill {
+  display: inline-block;
   font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  color: var(--text-muted);
-  padding-top: 2px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--primary-light);
+  color: var(--primary-dark);
+  border: 1px solid color-mix(in srgb, var(--primary) 22%, transparent);
 }
 
-.scrum-sprint-goal-body {
+.sprint-header-progress {
+  flex: 1;
+  min-width: min(100%, 280px);
+  max-width: 360px;
+}
+
+.sprint-header-progress-labels {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  margin-bottom: 8px;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.sprint-header-progress-pct {
+  font-weight: 600;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.sprint-progress-track {
+  height: 8px;
+  border-radius: 999px;
+  background: var(--border);
+  overflow: hidden;
+}
+
+.sprint-progress-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--primary);
+  transition: width 0.2s ease;
+}
+
+.sprint-section {
+  margin: 0;
+}
+
+.sprint-section-label,
+.sprint-board-section-title {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  margin: 0 0 10px;
+}
+
+.sprint-board-section-title {
+  margin-bottom: 16px;
+}
+
+.sprint-product-inner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 16px 24px;
+}
+
+.sprint-product-body {
+  flex: 1;
+  min-width: min(100%, 280px);
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.55;
+  color: var(--text);
+}
+
+.sprint-product-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.sprint-tabs-wrap {
+  margin: 0;
+}
+
+.sprint-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 4px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+}
+
+.sprint-tab {
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 500;
+  padding: 10px 18px;
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+
+.sprint-tab:hover {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+
+.sprint-tab:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.sprint-tab.is-active {
+  background: var(--primary-light);
+  color: var(--primary-dark);
+  font-weight: 600;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--primary) 25%, transparent);
+}
+
+.sprint-tab.is-suggested:not(.is-active) {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--primary) 28%, transparent);
+}
+
+.sprint-overview {
+  padding: 20px 0;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+
+.sprint-overview-inner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px 28px;
+}
+
+.sprint-overview-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 20px 28px;
+  flex: 1;
+  min-width: min(100%, 640px);
+}
+
+.sprint-overview-label {
+  display: block;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--text-light);
+  margin-bottom: 6px;
+}
+
+.sprint-overview-value {
   margin: 0;
   font-size: 14px;
   line-height: 1.45;
   color: var(--text);
 }
 
-.scrum-col-head--with-action span {
-  display: inline-flex;
-  align-items: center;
+.sprint-overview-actions {
+  display: flex;
+  flex-wrap: wrap;
   gap: 8px;
+  align-items: center;
+  flex-shrink: 0;
 }
 
-.scrum-col-add {
-  font-size: 16px;
-  font-weight: 600;
-  line-height: 1;
-  padding: 2px 8px;
+.sprint-board-wrap {
+  margin-top: 8px;
 }
 
-.scrum-col-body--drag-over {
-  background: color-mix(in srgb, var(--primary) 8%, var(--surface-hover));
-  outline: 2px dashed color-mix(in srgb, var(--primary) 45%, transparent);
-  outline-offset: -4px;
-  border-radius: var(--radius);
+.sprint-kanban {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  align-items: stretch;
 }
 
-.scrum-context-menu {
-  position: fixed;
-  z-index: 4000;
-  min-width: 148px;
-  padding: 4px;
+.sprint-column {
+  display: flex;
+  flex-direction: column;
+  min-height: 480px;
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  box-shadow: var(--shadow-md);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  box-shadow: var(--shadow);
 }
 
-.scrum-context-menu-item {
-  display: block;
-  width: 100%;
-  text-align: left;
-  border: none;
-  background: transparent;
-  font-size: 13px;
-  padding: 8px 12px;
-  border-radius: var(--radius-sm);
-  color: var(--text);
-  cursor: pointer;
-}
-
-.scrum-context-menu-item:hover {
-  background: var(--surface-hover);
-}
-
-.scrum-context-menu-item--danger {
-  color: var(--danger);
-}
-
-.scrum-context-menu-item:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
-
-/* Scrum minimal board */
-.scrum-board--minimal {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 0;
-  border-top: 1px solid var(--border);
-}
-
-@media (max-width: 768px) {
-  .scrum-board--minimal {
-    grid-template-columns: 1fr;
-  }
-}
-
-.scrum-col {
-  border-right: 1px solid var(--border);
-  background: var(--surface-hover);
-  min-height: 200px;
-}
-
-.scrum-col:last-child {
-  border-right: none;
-}
-
-.scrum-col-head {
+.sprint-column-head {
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  padding: 10px 14px;
-  font-size: 11px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--text-muted);
-  background: var(--surface);
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
   border-bottom: 1px solid var(--border);
 }
 
-.scrum-col-count {
-  font-weight: 600;
-  color: var(--text-light);
+.sprint-column-head--todo {
+  background: #f3f4f6;
+  border-bottom-color: #e5e7eb;
 }
 
-.scrum-col-body {
-  padding: 10px;
+.sprint-column-head--progress {
+  background: var(--warning-light);
+  border-bottom-color: color-mix(in srgb, var(--warning) 22%, transparent);
+}
+
+.sprint-column-head--done {
+  background: var(--success-light);
+  border-bottom-color: color-mix(in srgb, var(--success) 22%, transparent);
+}
+
+.sprint-column-title {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text);
+}
+
+.sprint-column-head--todo .sprint-column-title {
+  color: #4b5563;
+}
+
+.sprint-column-head--progress .sprint-column-title {
+  color: #92400e;
+}
+
+.sprint-column-head--done .sprint-column-title {
+  color: #166534;
+}
+
+.sprint-column-count {
+  font-size: 13px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+  min-width: 1.5rem;
+  text-align: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--surface) 70%, transparent);
+}
+
+.sprint-column-body {
+  flex: 1;
+  padding: 14px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 12px;
+  background: var(--bg);
+  min-height: 200px;
+  transition: background 0.15s ease, box-shadow 0.15s ease;
 }
 
-.scrum-col-empty {
-  font-size: 12px;
-  color: var(--text-light);
-  text-align: center;
-  padding: 16px 8px;
+.sprint-column-body.is-drag-over {
+  background: color-mix(in srgb, var(--primary) 6%, var(--bg));
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--primary) 35%, transparent);
+}
+
+.sprint-column-empty {
   margin: 0;
+  padding: 20px 8px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--text-light);
 }
 
-.scrum-task-card {
+.sprint-column-footer {
+  padding: 12px 14px;
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.sprint-add-task {
+  width: 100%;
+  justify-content: center;
+}
+
+.sprint-card {
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  padding: 14px 14px 12px;
   box-shadow: var(--shadow);
   cursor: grab;
+  text-align: left;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
-.scrum-task-card:active {
+.sprint-card:hover {
+  border-color: var(--border-dark);
+  box-shadow: var(--shadow-md);
+}
+
+.sprint-card:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.sprint-card:active {
   cursor: grabbing;
 }
 
-.scrum-task-title {
-  font-size: 13px;
-  font-weight: 500;
-  margin: 0 0 8px;
-  line-height: 1.35;
-}
-
-.scrum-task-avatars {
+.sprint-card-top {
   display: flex;
-  gap: 4px;
-  margin-bottom: 8px;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
 }
 
-.scrum-po {
+.sprint-card-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--text);
+  flex: 1;
+  min-width: 0;
+}
+
+.sprint-card-delete {
+  flex-shrink: 0;
+  border: none;
+  background: transparent;
+  color: var(--danger);
+  font-size: 12px;
+  font-weight: 500;
+  padding: 4px 6px;
+  margin: -4px -6px 0 0;
+  border-radius: var(--radius);
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.sprint-card-delete:hover {
+  color: var(--danger);
+  background: var(--danger-light);
+  text-decoration: none;
+}
+
+.sprint-card-delete:focus-visible {
+  outline: 2px solid var(--danger);
+  outline-offset: 1px;
+}
+
+.sprint-card-meta {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.sprint-card-meta-label {
   font-size: 11px;
-  color: var(--text-muted);
-  cursor: pointer;
-  margin: 0;
+  color: var(--text-light);
+  font-weight: 500;
 }
 
-.scrum-po input {
-  width: auto;
+.sprint-card-avatars {
+  display: flex;
+  gap: 4px;
 }
 
-.reviews-minimal {
+.sprint-card-footer {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding-top: 4px;
+  border-top: 1px solid var(--border);
+  margin-top: 2px;
+}
+
+.sprint-card-status.task-status-chip {
+  font-size: 11px;
+  padding: 5px 11px;
+}
+
+.sprint-notes-compose {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: flex-end;
+  margin-bottom: 20px;
+}
+
+.sprint-notes-input {
+  flex: 1;
+  min-width: min(100%, 240px);
+  min-height: 52px;
+  resize: vertical;
+}
+
+.sprint-notes-post {
+  flex-shrink: 0;
+}
+
+.sprint-notes-list {
   list-style: none;
   margin: 0;
   padding: 0;
 }
 
-.reviews-minimal-item {
+.sprint-notes-item {
   display: flex;
-  gap: 10px;
-  padding: 12px 0;
+  gap: 12px;
+  padding: 14px 0;
   border-bottom: 1px solid var(--border);
 }
 
-.reviews-minimal-item:last-child {
+.sprint-notes-item:last-child {
   border-bottom: none;
 }
 
-.reviews-minimal-meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  font-size: 12px;
-  margin-bottom: 4px;
+.sprint-notes-item-body {
+  min-width: 0;
+  flex: 1;
 }
 
-.reviews-minimal-body {
+.sprint-notes-item-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 12px;
+  margin-bottom: 6px;
+}
+
+.sprint-notes-item-name {
   font-size: 13px;
-  margin: 0;
-  line-height: 1.45;
+  font-weight: 600;
   color: var(--text);
+}
+
+.sprint-notes-item-date {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.sprint-notes-item-text {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--text);
+}
+
+.sprint-notes-empty {
+  margin: 0;
+}
+
+@media (max-width: 960px) {
+  .sprint-overview-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .sprint-kanban {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+  }
+
+  .sprint-column {
+    min-height: 0;
+  }
+}
+
+@media (max-width: 640px) {
+  .sprint-header-title {
+    font-size: 1.5rem;
+  }
+
+  .sprint-header-progress {
+    max-width: none;
+  }
 }
 
 .card-section {
