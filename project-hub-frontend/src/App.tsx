@@ -1,121 +1,87 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
-import heroImg from './assets/hero.png'
-import './App.css'
+import { BrowserRouter, NavLink, Routes, Route } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { getMembers } from './api/client';
+import type { GroupMember } from './types';
+import DashboardPage from './pages/DashboardPage';
+import TasksPage from './pages/TasksPage';
+import ResourcesPage from './pages/ResourcesPage';
+import PlayGamePage from './pages/PlayGamePage';
+import './index.css';
 
-function App() {
-  const [count, setCount] = useState(0)
+export default function App() {
+  const [members, setMembers] = useState<GroupMember[]>([]);
+  const [currentMember, setCurrentMember] = useState<GroupMember | null>(null);
+
+  useEffect(() => {
+    getMembers().then(data => {
+      setMembers(data);
+      if (data.length > 0) setCurrentMember(data[0]);
+    });
+  }, []);
 
   return (
-    <>
-      <section id="center">
-        <div className="hero">
-          <img src={heroImg} className="base" width="170" height="179" alt="" />
-          <img src={reactLogo} className="framework" alt="React logo" />
-          <img src={viteLogo} className="vite" alt="Vite logo" />
-        </div>
-        <div>
-          <h1>Get started</h1>
-          <p>
-            Edit <code>src/App.tsx</code> and save to test <code>HMR</code>
-          </p>
-        </div>
-        <button
-          className="counter"
-          onClick={() => setCount((count) => count + 1)}
-        >
-          Count is {count}
-        </button>
-      </section>
+    <BrowserRouter>
+      <div className="app-layout">
+        {/* ── Sidebar ────────────────────────────────────────────────── */}
+        <nav className="sidebar">
+          <div className="sidebar-logo">
+            <span className="logo-icon">📋</span>
+            ProjectHub
+          </div>
 
-      <div className="ticks"></div>
+          <div className="sidebar-nav">
+            <NavLink to="/" end className={({ isActive }) => `nav-link${isActive ? ' active' : ''}`}>
+              <span className="nav-icon">🏠</span> Dashboard
+            </NavLink>
+            <NavLink to="/tasks" className={({ isActive }) => `nav-link${isActive ? ' active' : ''}`}>
+              <span className="nav-icon">✅</span> Tasks
+            </NavLink>
+            <NavLink to="/resources" className={({ isActive }) => `nav-link${isActive ? ' active' : ''}`}>
+              <span className="nav-icon">📁</span> Resources
+            </NavLink>
+            <NavLink to="/game" className={({ isActive }) => `nav-link${isActive ? ' active' : ''}`}>
+              <span className="nav-icon">🎮</span> Play Game
+            </NavLink>
+          </div>
 
-      <section id="next-steps">
-        <div id="docs">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#documentation-icon"></use>
-          </svg>
-          <h2>Documentation</h2>
-          <p>Your questions, answered</p>
-          <ul>
-            <li>
-              <a href="https://vite.dev/" target="_blank">
-                <img className="logo" src={viteLogo} alt="" />
-                Explore Vite
-              </a>
-            </li>
-            <li>
-              <a href="https://react.dev/" target="_blank">
-                <img className="button-icon" src={reactLogo} alt="" />
-                Learn more
-              </a>
-            </li>
-          </ul>
-        </div>
-        <div id="social">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#social-icon"></use>
-          </svg>
-          <h2>Connect with us</h2>
-          <p>Join the Vite community</p>
-          <ul>
-            <li>
-              <a href="https://github.com/vitejs/vite" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#github-icon"></use>
-                </svg>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a href="https://chat.vite.dev/" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#discord-icon"></use>
-                </svg>
-                Discord
-              </a>
-            </li>
-            <li>
-              <a href="https://x.com/vite_js" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#x-icon"></use>
-                </svg>
-                X.com
-              </a>
-            </li>
-            <li>
-              <a href="https://bsky.app/profile/vite.dev" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#bluesky-icon"></use>
-                </svg>
-                Bluesky
-              </a>
-            </li>
-          </ul>
-        </div>
-      </section>
+          {/* Current user picker — lightweight auth */}
+          <div className="sidebar-footer">
+            <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 6, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.04em' }}>
+              Viewing as
+            </div>
+            {currentMember && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                <span className="avatar avatar-sm" style={{ background: currentMember.color ?? '#aaa' }}>
+                  {currentMember.avatarInitial}
+                </span>
+                <span style={{ fontWeight: 600, fontSize: 13 }}>{currentMember.name}</span>
+              </div>
+            )}
+            <select
+              value={currentMember?.id ?? ''}
+              onChange={e => {
+                const m = members.find(m => m.id === Number(e.target.value));
+                if (m) setCurrentMember(m);
+              }}
+              style={{ fontSize: 13 }}
+            >
+              {members.map(m => (
+                <option key={m.id} value={m.id}>{m.name}</option>
+              ))}
+            </select>
+          </div>
+        </nav>
 
-      <div className="ticks"></div>
-      <section id="spacer"></section>
-    </>
-  )
+        {/* ── Main content ────────────────────────────────────────────── */}
+        <div className="main-content">
+          <Routes>
+            <Route path="/" element={<DashboardPage currentMember={currentMember} members={members} />} />
+            <Route path="/tasks" element={<TasksPage currentMember={currentMember} members={members} />} />
+            <Route path="/resources" element={<ResourcesPage currentMember={currentMember} members={members} />} />
+            <Route path="/game" element={<PlayGamePage currentMember={currentMember} members={members} />} />
+          </Routes>
+        </div>
+      </div>
+    </BrowserRouter>
+  );
 }
-
-export default App
