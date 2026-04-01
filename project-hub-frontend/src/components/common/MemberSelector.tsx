@@ -1,4 +1,5 @@
 import type { GroupMember } from '../../types';
+import { resolveMemberColor } from '../../lib/memberColor';
 
 interface Props {
   members: GroupMember[];
@@ -17,26 +18,22 @@ export default function MemberSelector({ members, selected, onChange, label = 'A
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 4 }}>
         {members.map(m => {
           const active = selected.includes(m.id);
+          const c = resolveMemberColor(m.name, m.color);
           return (
             <button
               key={m.id}
               type="button"
               onClick={() => toggle(m.id)}
+              className="member-chip"
+              data-active={active ? 'true' : undefined}
               style={{
-                display: 'flex', alignItems: 'center', gap: 6,
-                padding: '4px 10px', borderRadius: 99,
-                border: `2px solid ${active ? m.color ?? 'var(--primary)' : 'var(--border-dark)'}`,
-                background: active ? (m.color ?? 'var(--primary)') + '18' : 'var(--surface)',
-                color: active ? m.color ?? 'var(--primary)' : 'var(--text-muted)',
-                fontWeight: active ? 600 : 400,
-                cursor: 'pointer', fontSize: 13,
+                borderColor: active ? c : undefined,
+                background: active ? `${c}14` : undefined,
+                color: active ? c : undefined,
               }}
             >
-              <span
-                className="avatar avatar-sm"
-                style={{ background: m.color ?? '#aaa', fontSize: 10 }}
-              >
-                {m.avatarInitial}
+              <span className="avatar avatar-sm" style={{ background: c, fontSize: 10 }}>
+                {m.avatarInitial ?? m.name.charAt(0)}
               </span>
               {m.name}
             </button>

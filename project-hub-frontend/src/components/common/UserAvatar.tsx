@@ -1,4 +1,5 @@
 import type { GroupMember } from '../../types';
+import { resolveMemberColor } from '../../lib/memberColor';
 
 export default function UserAvatar({
   member,
@@ -9,6 +10,7 @@ export default function UserAvatar({
 }) {
   const s = size === 'sm' ? 28 : 36;
   const initial = member.avatarInitial ?? member.name.charAt(0).toUpperCase();
+  const bg = resolveMemberColor(member.name, member.color);
   return (
     <span
       className="user-avatar"
@@ -16,7 +18,7 @@ export default function UserAvatar({
         width: s,
         height: s,
         borderRadius: '50%',
-        background: member.color ?? 'var(--border-dark)',
+        background: bg,
         color: '#fff',
         fontSize: size === 'sm' ? 11 : 13,
         fontWeight: 600,

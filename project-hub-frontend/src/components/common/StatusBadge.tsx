@@ -12,9 +12,9 @@ export function StatusBadge({ status }: { status: TaskStatus }) {
 
 export function PriorityBadge({ priority }: { priority: TaskPriority }) {
   const map: Record<TaskPriority, [string, string]> = {
-    High: ['badge badge-high', 'High'],
-    Medium: ['badge badge-medium', 'Medium'],
-    Low: ['badge badge-low', 'Low'],
+    High: ['badge badge-pri-high', 'High'],
+    Medium: ['badge badge-pri-med', 'Med'],
+    Low: ['badge badge-pri-low', 'Low'],
   };
   const [cls, label] = map[priority] ?? ['badge', priority];
   return <span className={cls}>{label}</span>;

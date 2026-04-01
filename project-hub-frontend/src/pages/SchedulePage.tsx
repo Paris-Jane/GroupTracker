@@ -56,17 +56,17 @@ export default function SchedulePage({ currentMember, members }: Props) {
   const memberName = (id?: number) => members.find(x => x.id === id)?.name ?? '—';
 
   return (
-    <div className="page-stack">
-      <header className="page-header">
-        <h1>Schedule</h1>
-        <p className="page-lead">
-          Week of {formatDayLabel(SCHEDULE_WEEK_START)} – {formatDayLabel(SCHEDULE_WEEK_END)}
+    <div className="page">
+      <header className="page-title-block">
+        <h1 className="page-title">Schedule</h1>
+        <p className="page-subtitle">
+          {formatDayLabel(SCHEDULE_WEEK_START)} – {formatDayLabel(SCHEDULE_WEEK_END)}
         </p>
       </header>
 
-      <section className="card-section">
+      <section className="panel">
         <div className="flex-between mb-3">
-          <h2 className="section-title mb-0">Team calendar</h2>
+          <h2 className="panel-heading mb-0">This week</h2>
           <button type="button" className="btn btn-primary btn-sm" onClick={() => setEditing('new')}>
             Add block
           </button>

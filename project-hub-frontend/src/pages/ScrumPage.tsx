@@ -10,21 +10,20 @@ import {
   toggleAcceptedByPO,
 } from '../api/client';
 import type { GroupMember, TaskItem, TaskStatus } from '../types';
-import { StatusBadge } from '../components/common/StatusBadge';
 import UserAvatar from '../components/common/UserAvatar';
+import Avatar from '../components/common/Avatar';
 
 interface Props {
   currentMember: GroupMember | null;
-  members: GroupMember[];
 }
 
-function colForStatus(s: TaskStatus): 'backlog' | 'progress' | 'done' {
+function colForStatus(s: TaskStatus): 'todo' | 'progress' | 'done' {
   if (s === 'Completed') return 'done';
   if (s === 'InProgress') return 'progress';
-  return 'backlog';
+  return 'todo';
 }
 
-export default function ScrumPage({ currentMember, members }: Props) {
+export default function ScrumPage({ currentMember }: Props) {
   const [tasks, setTasks] = useState<TaskItem[]>([]);
   const [settings, setSettings] = useState<Awaited<ReturnType<typeof getProjectSettings>> | null>(null);
   const [sprintGoals, setSprintGoals] = useState<Awaited<ReturnType<typeof getSprintGoals>>>([]);
@@ -71,16 +70,16 @@ export default function ScrumPage({ currentMember, members }: Props) {
   );
 
   const columns = useMemo(() => {
-    const backlog: TaskItem[] = [];
+    const todo: TaskItem[] = [];
     const progress: TaskItem[] = [];
     const done: TaskItem[] = [];
     for (const t of sprintTasks) {
       const c = colForStatus(t.status);
       if (c === 'done') done.push(t);
       else if (c === 'progress') progress.push(t);
-      else backlog.push(t);
+      else todo.push(t);
     }
-    return { backlog, progress, done };
+    return { todo, progress, done };
   }, [sprintTasks]);
 
   const doneCount = columns.done.length;
@@ -119,117 +118,114 @@ export default function ScrumPage({ currentMember, members }: Props) {
   const maxSprint = useMemo(() => {
     const fromTasks = tasks.map(t => t.sprintNumber ?? 0);
     const fromGoals = sprintGoals.map(g => g.sprintNumber);
-    const m = Math.max(1, ...fromTasks, ...fromGoals, sprintNum);
-    return m;
+    return Math.max(1, ...fromTasks, ...fromGoals, sprintNum);
   }, [tasks, sprintGoals, sprintNum]);
 
   return (
-    <div className="page-stack">
-      <header className="page-header">
-        <h1>Scrum</h1>
-        <p className="page-lead">Product goal, sprint focus, backlog columns, and reviews</p>
+    <div className="page">
+      <header className="page-title-block">
+        <h1 className="page-title">Scrum</h1>
+        <p className="page-subtitle">Sprint board, goals, and reviews</p>
       </header>
 
       {settings && (
-        <section className="card-section">
-          <h2 className="section-title">Product</h2>
+        <section className="panel">
+          <h2 className="panel-heading">Product</h2>
           <div className="form-row">
-            <label>Product goal</label>
+            <label>Goal</label>
             <textarea
-              rows={3}
+              rows={2}
               value={productGoalLocal}
               onChange={e => setProductGoalLocal(e.target.value)}
               disabled={savingSettings}
             />
           </div>
-          <div className="form-grid mb-3">
+          <div className="form-grid">
             <div className="form-row">
-              <label>Website URL</label>
-              <input
-                value={websiteLocal}
-                onChange={e => setWebsiteLocal(e.target.value)}
-                disabled={savingSettings}
-                placeholder="https://"
-              />
+              <label>Website</label>
+              <input value={websiteLocal} onChange={e => setWebsiteLocal(e.target.value)} disabled={savingSettings} placeholder="https://…" />
             </div>
             <div className="form-row">
-              <label>GitHub URL</label>
-              <input
-                value={githubLocal}
-                onChange={e => setGithubLocal(e.target.value)}
-                disabled={savingSettings}
-                placeholder="https://github.com/…"
-              />
+              <label>GitHub</label>
+              <input value={githubLocal} onChange={e => setGithubLocal(e.target.value)} disabled={savingSettings} placeholder="https://…" />
             </div>
           </div>
           <button type="button" className="btn btn-primary btn-sm" disabled={savingSettings} onClick={saveProductMeta}>
-            {savingSettings ? 'Saving…' : 'Save product settings'}
+            {savingSettings ? 'Saving…' : 'Save'}
           </button>
         </section>
       )}
 
-      <section className="card-section">
-        <div className="flex-between mb-3 flex-wrap gap-2">
-          <h2 className="section-title mb-0">Sprint</h2>
-          <div className="flex gap-2 items-center">
-            <label className="text-sm text-muted mb-0" style={{ fontWeight: 500 }}>
-              Sprint #
-            </label>
-            <select
-              value={sprintNum}
-              onChange={e => setSprintNum(Number(e.target.value))}
-              style={{ width: 'auto' }}
-            >
-              {Array.from({ length: maxSprint + 2 }, (_, i) => i + 1).map(n => (
-                <option key={n} value={n}>
-                  {n}
-                </option>
-              ))}
-            </select>
+      <section className="panel">
+        <div className="flex-between flex-wrap gap-2 mb-3">
+          <h2 className="panel-heading mb-0">Sprint {sprintNum}</h2>
+          <select
+            className="select-compact"
+            value={sprintNum}
+            onChange={e => setSprintNum(Number(e.target.value))}
+            aria-label="Sprint number"
+          >
+            {Array.from({ length: maxSprint + 2 }, (_, i) => i + 1).map(n => (
+              <option key={n} value={n}>
+                Sprint {n}
+              </option>
+            ))}
+          </select>
+        </div>
+        <p className="text-muted text-sm mb-3">
+          {doneCount} of {totalSprint || '—'} tasks complete
+        </p>
+        <div className="form-grid">
+          <div className="form-row">
+            <label>Sprint goal</label>
+            <textarea rows={2} value={goalDraft} onChange={e => setGoalDraft(e.target.value)} placeholder="Focus for this sprint" />
+          </div>
+          <div className="form-row">
+            <label>Sprint due</label>
+            <input type="date" value={dueDraft} onChange={e => setDueDraft(e.target.value)} />
           </div>
         </div>
-        <p className="text-sm text-muted mb-3">
-          Progress for this sprint: {doneCount} / {totalSprint || '—'} tasks marked complete
-        </p>
-        <div className="form-row">
-          <label>Sprint goal</label>
-          <textarea rows={2} value={goalDraft} onChange={e => setGoalDraft(e.target.value)} placeholder="What are we shipping this sprint?" />
-        </div>
-        <div className="form-row">
-          <label>Sprint due date</label>
-          <input type="date" value={dueDraft} onChange={e => setDueDraft(e.target.value)} />
-        </div>
-        <button type="button" className="btn btn-primary btn-sm" onClick={saveGoal}>
+        <button type="button" className="btn btn-secondary btn-sm" onClick={saveGoal}>
           Save sprint goal
         </button>
       </section>
 
-      <section className="card-section">
-        <h2 className="section-title mb-3">Board (this sprint)</h2>
-        <div className="scrum-board">
+      <section className="panel panel--flush">
+        <h2 className="panel-heading px-panel">Board</h2>
+        <div className="scrum-board scrum-board--minimal">
           {(
             [
-              ['Sprint backlog', columns.backlog],
+              ['To do', columns.todo],
               ['In progress', columns.progress],
               ['Done', columns.done],
             ] as const
           ).map(([title, list]) => (
-            <div key={title} className="scrum-column">
-              <div className="scrum-column-head">{title}</div>
-              <div className="scrum-column-body">
+            <div key={title} className="scrum-col">
+              <div className="scrum-col-head">
+                {title}
+                <span className="scrum-col-count">{list.length}</span>
+              </div>
+              <div className="scrum-col-body">
                 {list.length === 0 ? (
-                  <p className="empty-hint text-sm">No tasks</p>
+                  <p className="scrum-col-empty">Empty</p>
                 ) : (
                   list.map(t => (
-                    <div key={t.id} className="scrum-card">
-                      <div className="flex-between gap-2 mb-1">
-                        <span className="font-medium text-sm">{t.name}</span>
-                        <StatusBadge status={t.status} />
-                      </div>
-                      {t.definitionOfDone && (
-                        <p className="text-xs text-muted mb-2">DoD: {t.definitionOfDone}</p>
+                    <div key={t.id} className="scrum-task-card">
+                      <p className="scrum-task-title">{t.name}</p>
+                      {t.assignments.length > 0 && (
+                        <div className="scrum-task-avatars">
+                          {t.assignments.slice(0, 4).map(a => (
+                            <Avatar
+                              key={a.id}
+                              initial={a.memberAvatarInitial}
+                              color={a.memberColor}
+                              size="sm"
+                              name={a.memberName}
+                            />
+                          ))}
+                        </div>
                       )}
-                      <label className="flex gap-2 items-center text-xs cursor-pointer">
+                      <label className="scrum-po">
                         <input
                           type="checkbox"
                           checked={t.acceptedByPO}
@@ -237,9 +233,8 @@ export default function ScrumPage({ currentMember, members }: Props) {
                             await toggleAcceptedByPO(t.id, e.target.checked, currentMember?.id);
                             loadTasks();
                           }}
-                          style={{ width: 'auto' }}
                         />
-                        Accepted by PO
+                        PO ok
                       </label>
                     </div>
                   ))
@@ -250,34 +245,41 @@ export default function ScrumPage({ currentMember, members }: Props) {
         </div>
       </section>
 
-      <section className="card-section">
-        <h2 className="section-title mb-3">Sprint reviews</h2>
+      <section className="panel">
+        <h2 className="panel-heading">Sprint reviews</h2>
         <div className="form-row">
-          <label>Add review ({members.find(m => m.id === currentMember?.id)?.name ?? 'sign in'})</label>
+          <label>Add note</label>
           <textarea
-            rows={3}
+            rows={2}
             value={reviewBody}
             onChange={e => setReviewBody(e.target.value)}
-            placeholder="What went well, what to improve…"
+            placeholder="What went well, what to improve"
             disabled={!currentMember}
           />
         </div>
-        <button type="button" className="btn btn-primary btn-sm mb-4" disabled={!currentMember || !reviewBody.trim()} onClick={submitReview}>
-          Post review
+        <button
+          type="button"
+          className="btn btn-secondary btn-sm mb-3"
+          disabled={!currentMember || !reviewBody.trim()}
+          onClick={submitReview}
+        >
+          Post
         </button>
-        <ul className="reviews-list">
+        <ul className="reviews-minimal">
           {reviews.map(r => (
-            <li key={r.id} className="review-item">
-              <div className="flex gap-2 items-center mb-1">
-                <UserAvatar member={{ name: r.memberName, color: r.memberColor, avatarInitial: r.memberAvatarInitial }} size="sm" />
-                <span className="text-sm font-medium">{r.memberName}</span>
-                <span className="text-xs text-muted">{new Date(r.createdAt).toLocaleString()}</span>
+            <li key={r.id} className="reviews-minimal-item">
+              <UserAvatar member={{ name: r.memberName, color: r.memberColor, avatarInitial: r.memberAvatarInitial }} size="sm" />
+              <div>
+                <div className="reviews-minimal-meta">
+                  <span>{r.memberName}</span>
+                  <time className="text-muted text-xs">{new Date(r.createdAt).toLocaleDateString()}</time>
+                </div>
+                <p className="reviews-minimal-body">{r.content}</p>
               </div>
-              <p className="text-sm whitespace-pre-wrap">{r.content}</p>
             </li>
           ))}
         </ul>
-        {reviews.length === 0 && <p className="empty-hint text-sm">No reviews for this sprint yet.</p>}
+        {reviews.length === 0 && <p className="panel-empty">No reviews yet.</p>}
       </section>
     </div>
   );

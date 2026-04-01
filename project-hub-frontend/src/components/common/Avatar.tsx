@@ -1,3 +1,5 @@
+import { resolveMemberColor } from '../../lib/memberColor';
+
 interface AvatarProps {
   initial?: string;
   color?: string;
@@ -5,10 +7,11 @@ interface AvatarProps {
   name?: string;
 }
 
-export default function Avatar({ initial, color = '#4A90D9', size = 'md', name }: AvatarProps) {
+export default function Avatar({ initial, color, size = 'md', name }: AvatarProps) {
   const cls = `avatar${size === 'sm' ? ' avatar-sm' : size === 'lg' ? ' avatar-lg' : ''}`;
+  const bg = resolveMemberColor(name ?? '', color);
   return (
-    <span className={cls} style={{ background: color }} title={name}>
+    <span className={cls} style={{ background: bg }} title={name}>
       {initial ?? '?'}
     </span>
   );

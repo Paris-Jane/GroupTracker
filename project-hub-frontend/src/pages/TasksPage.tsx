@@ -5,7 +5,7 @@ import {
   createSubtask, updateSubtask, deleteSubtask,
 } from '../api/client';
 import type { TaskItem, GroupMember, TaskStatus, TaskPriority, SubtaskItem, TaskCategory, CreateTaskDto } from '../types';
-import { StatusBadge, PriorityBadge, RequiredBadge } from '../components/common/StatusBadge';
+import { PriorityBadge } from '../components/common/StatusBadge';
 import Avatar from '../components/common/Avatar';
 import MemberSelector from '../components/common/MemberSelector';
 import ConfirmDialog from '../components/common/ConfirmDialog';
@@ -207,9 +207,9 @@ function TaskFormModal({ task, members, onSave, onClose }: TaskFormProps) {
   );
 }
 
-// ── Task Card ────────────────────────────────────────────────────────────────
+// ── Task row (scannable list) ───────────────────────────────────────────────
 
-interface TaskCardProps {
+interface TaskRowProps {
   task: TaskItem;
   currentMember: GroupMember | null;
   onEdit: () => void;
@@ -221,135 +221,126 @@ interface TaskCardProps {
   onAssignSelf: () => void;
 }
 
-function TaskCard({ task, currentMember, onEdit, onDelete, onStatusChange, onSubtaskToggle, onSubtaskAdd, onSubtaskDelete, onAssignSelf }: TaskCardProps) {
+function TaskRow({
+  task,
+  currentMember,
+  onEdit,
+  onDelete,
+  onStatusChange,
+  onSubtaskToggle,
+  onSubtaskAdd,
+  onSubtaskDelete,
+  onAssignSelf,
+}: TaskRowProps) {
   const [expanded, setExpanded] = useState(false);
   const [newSub, setNewSub] = useState('');
   const completedSubs = task.subtasks.filter(s => s.isCompleted).length;
   const overdue = isOverdue(task.deadline, task.status);
   const isAssigned = currentMember && task.assignments.some(a => a.groupMemberId === currentMember.id);
+  const statusClass =
+    task.status === 'Completed' ? 'completed' : task.status === 'InProgress' ? 'inprogress' : 'notstarted';
 
   return (
-    <div className="card" style={{
-      borderLeft: `4px solid ${task.priority === 'High' ? 'var(--danger)' : task.priority === 'Medium' ? 'var(--warning)' : 'var(--success)'}`,
-      opacity: task.status === 'Completed' ? .75 : 1,
-    }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 4 }}>
-            <span style={{ fontWeight: 600, fontSize: 14, color: task.status === 'Completed' ? 'var(--text-muted)' : 'var(--text)', textDecoration: task.status === 'Completed' ? 'line-through' : 'none' }}>
-              {task.name}
-            </span>
-            <StatusBadge status={task.status} />
-            <PriorityBadge priority={task.priority} />
-            <RequiredBadge required={task.isRequired} />
-          </div>
-
-          {task.notes && (
-            <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 6 }}>{task.notes}</p>
-          )}
-
-          <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', fontSize: 12, color: 'var(--text-muted)', marginBottom: 8 }}>
-            {task.deadline && (
-              <span style={{ color: overdue ? 'var(--danger)' : 'var(--text-muted)', fontWeight: overdue ? 600 : 400 }}>
-                Due {formatDeadline(task.deadline)}
-                {overdue && ' (overdue)'}
-              </span>
-            )}
-            {task.estimatedTime && <span>Est. {task.estimatedTime}</span>}
-            {task.tags && <span>Tags: {task.tags}</span>}
-          </div>
-
-          {/* Assignments */}
-          {task.assignments.length > 0 && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 8 }}>
+    <div className="task-row-wrap">
+      <div className={`task-row task-row--${statusClass}${overdue ? ' task-row--overdue' : ''}`}>
+        <div className="task-row-name">
+          <span className={task.status === 'Completed' ? 'task-row-title task-row-title--done' : 'task-row-title'}>
+            {task.name}
+          </span>
+          {task.notes && <p className="task-row-notes">{task.notes}</p>}
+        </div>
+        <div className="task-row-assignees">
+          {task.assignments.length === 0 ? (
+            <span className="text-muted text-xs">Unassigned</span>
+          ) : (
+            <div className="task-row-avatar-stack">
               {task.assignments.map(a => (
-                <Avatar key={a.id} initial={a.memberAvatarInitial} color={a.memberColor} size="sm" name={a.memberName} />
-              ))}
-              <span style={{ fontSize: 12, color: 'var(--text-muted)', marginLeft: 4 }}>
-                {task.assignments.map(a => a.memberName).join(', ')}
-              </span>
-            </div>
-          )}
-
-          {/* Subtask progress */}
-          {task.subtasks.length > 0 && (
-            <div style={{ marginBottom: 8 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: 'var(--text-muted)', marginBottom: 4 }}>
-                <span>Subtasks: {completedSubs} / {task.subtasks.length}</span>
-                <button className="btn btn-ghost btn-xs" onClick={() => setExpanded(!expanded)}>
-                  {expanded ? 'Hide' : 'Show'}
-                </button>
-              </div>
-              <div className="progress-bar">
-                <div
-                  className={`progress-fill${completedSubs === task.subtasks.length ? ' complete' : ''}`}
-                  style={{ width: `${(completedSubs / task.subtasks.length) * 100}%` }}
+                <Avatar
+                  key={a.id}
+                  initial={a.memberAvatarInitial}
+                  color={a.memberColor}
+                  size="sm"
+                  name={a.memberName}
                 />
-              </div>
-            </div>
-          )}
-
-          {/* Expanded subtasks */}
-          {expanded && (
-            <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px solid var(--border)' }}>
-              {task.subtasks.map(s => (
-                <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0' }}>
-                  <input
-                    type="checkbox"
-                    checked={s.isCompleted}
-                    onChange={() => onSubtaskToggle(s)}
-                    style={{ width: 'auto', cursor: 'pointer' }}
-                  />
-                  <span style={{ fontSize: 13, textDecoration: s.isCompleted ? 'line-through' : 'none', color: s.isCompleted ? 'var(--text-muted)' : 'var(--text)', flex: 1 }}>
-                    {s.name}
-                  </span>
-                  <button type="button" className="btn btn-ghost btn-xs" onClick={() => onSubtaskDelete(s.id)}>
-                    Remove
-                  </button>
-                </div>
               ))}
-              {/* Add subtask inline */}
-              <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
-                <input
-                  value={newSub}
-                  onChange={e => setNewSub(e.target.value)}
-                  onKeyDown={e => e.key === 'Enter' && newSub.trim() && (onSubtaskAdd(newSub.trim()), setNewSub(''))}
-                  placeholder="Add subtask…"
-                  style={{ fontSize: 12 }}
-                />
-                <button
-                  className="btn btn-secondary btn-xs"
-                  style={{ flexShrink: 0 }}
-                  onClick={() => { if (newSub.trim()) { onSubtaskAdd(newSub.trim()); setNewSub(''); } }}
-                >+</button>
-              </div>
             </div>
           )}
         </div>
-
-        {/* Actions */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-end', flexShrink: 0 }}>
-          {/* Status quick-change */}
+        <div className="task-row-due">
+          {task.deadline ? (
+            <span className={overdue ? 'task-row-due-text task-row-due-text--late' : 'task-row-due-text'}>
+              {formatDeadline(task.deadline)}
+            </span>
+          ) : (
+            <span className="text-muted text-xs">—</span>
+          )}
+        </div>
+        <div className="task-row-pri">
+          <PriorityBadge priority={task.priority} />
+        </div>
+        <div className="task-row-status">
           <select
+            className="select-compact"
             value={task.status}
             onChange={e => onStatusChange(e.target.value as TaskStatus)}
-            style={{ fontSize: 12, padding: '3px 6px', width: 'auto' }}
+            aria-label="Status"
           >
-            <option value="NotStarted">Not Started</option>
-                <option value="InProgress">In Progress</option>
-            <option value="Completed">Completed</option>
+            <option value="NotStarted">To do</option>
+            <option value="InProgress">In progress</option>
+            <option value="Completed">Done</option>
           </select>
-          <div style={{ display: 'flex', gap: 4, marginTop: 4 }}>
-            {!isAssigned && currentMember && (
-              <button className="btn btn-secondary btn-xs" onClick={onAssignSelf} title="Assign to me">
-                + Me
-              </button>
-            )}
-            <button className="btn btn-secondary btn-xs" onClick={onEdit}>Edit</button>
-            <button className="btn btn-danger btn-xs" onClick={onDelete}>Del</button>
-          </div>
+        </div>
+        <div className="task-row-actions">
+          {task.subtasks.length > 0 && (
+            <button type="button" className="btn btn-ghost btn-xs" onClick={() => setExpanded(e => !e)}>
+              {expanded ? 'Hide' : `Subtasks (${completedSubs}/${task.subtasks.length})`}
+            </button>
+          )}
+          {!isAssigned && currentMember && (
+            <button type="button" className="btn btn-secondary btn-xs" onClick={onAssignSelf}>
+              Me
+            </button>
+          )}
+          <button type="button" className="btn btn-secondary btn-xs" onClick={onEdit}>
+            Edit
+          </button>
+          <button type="button" className="btn btn-ghost btn-xs text-danger" onClick={onDelete}>
+            Delete
+          </button>
         </div>
       </div>
+      {expanded && task.subtasks.length > 0 && (
+        <div className="task-row-detail">
+          {task.subtasks.map(s => (
+            <div key={s.id} className="task-row-sub">
+              <input
+                type="checkbox"
+                checked={s.isCompleted}
+                onChange={() => onSubtaskToggle(s)}
+                className="task-row-sub-check"
+              />
+              <span className={s.isCompleted ? 'task-row-sub-name task-row-sub-name--done' : 'task-row-sub-name'}>
+                {s.name}
+              </span>
+              <button type="button" className="btn btn-ghost btn-xs" onClick={() => onSubtaskDelete(s.id)}>
+                Remove
+              </button>
+            </div>
+          ))}
+          <div className="task-row-sub-add">
+            <input
+              value={newSub}
+              onChange={e => setNewSub(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && newSub.trim() && (onSubtaskAdd(newSub.trim()), setNewSub(''))}
+              placeholder="Add subtask"
+              className="input-inline"
+            />
+            <button type="button" className="btn btn-secondary btn-xs" onClick={() => newSub.trim() && (onSubtaskAdd(newSub.trim()), setNewSub(''))}>
+              Add
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -383,6 +374,12 @@ export default function TasksPage({ currentMember, members }: Props) {
     if (view === 'incomplete') list = list.filter(t => t.status !== 'Completed');
     if (view === 'completed') list = list.filter(t => t.status === 'Completed');
     if (filterPriority) list = list.filter(t => t.priority === filterPriority);
+    if (filterStatus) list = list.filter(t => t.status === filterStatus);
+    if (filterSprint !== '') list = list.filter(t => t.sprintNumber === filterSprint);
+    if (filterCategory) list = list.filter(t => t.category === filterCategory);
+    if (filterAssignee !== '') {
+      list = list.filter(t => t.assignments.some(a => a.groupMemberId === filterAssignee));
+    }
     if (search) {
       const q = search.toLowerCase();
       list = list.filter(t =>
@@ -424,21 +421,21 @@ export default function TasksPage({ currentMember, members }: Props) {
   };
 
   return (
-    <div className="page-stack">
-      <header className="page-header flex-between flex-wrap gap-3">
+    <div className="page">
+      <header className="page-title-block page-title-block--split">
         <div>
-          <h1>Tasks</h1>
-          <p className="page-lead mb-0">Backlog, assignments, planning poker, and pick sessions</p>
+          <h1 className="page-title">Tasks</h1>
+          <p className="page-subtitle">All project work in one place</p>
         </div>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <button type="button" className="btn btn-secondary btn-sm" onClick={() => setShowPoker(true)}>
-            Planning poker
+        <div className="page-actions">
+          <button type="button" className="btn btn-ghost btn-sm" onClick={() => setShowPoker(true)}>
+            Poker
           </button>
-          <button type="button" className="btn btn-secondary btn-sm" onClick={() => setShowPick(true)}>
-            Pick tasks
+          <button type="button" className="btn btn-ghost btn-sm" onClick={() => setShowPick(true)}>
+            Pick
           </button>
           <button type="button" className="btn btn-secondary btn-sm" onClick={() => setShowBulkImport(true)}>
-            Bulk import
+            Import
           </button>
           <button type="button" className="btn btn-primary btn-sm" onClick={() => setEditingTask('new')}>
             New task
@@ -446,144 +443,155 @@ export default function TasksPage({ currentMember, members }: Props) {
         </div>
       </header>
 
-      <div className="page-body" style={{ padding: 0 }}>
-
-        {/* ── Filters & search ── */}
-        <div className="card-section">
-          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
-            <input
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              placeholder="Search tasks…"
-              style={{ maxWidth: 220 }}
-            />
-            <div style={{ display: 'flex', gap: 4 }}>
-              {(['all', 'mine', 'incomplete', 'completed'] as FilterView[]).map(v => (
-                <button
-                  key={v}
-                  type="button"
-                  className={`btn btn-sm ${view === v ? 'btn-primary' : 'btn-secondary'}`}
-                  onClick={() => setView(v)}
-                >
-                  {v === 'all' ? 'All' : v === 'mine' ? 'Mine' : v === 'incomplete' ? 'Incomplete' : 'Completed'}
-                </button>
-              ))}
-            </div>
-            <select
-              value={filterStatus}
-              onChange={e => setFilterStatus(e.target.value as TaskStatus | '')}
-              style={{ width: 'auto' }}
-            >
-              <option value="">All statuses</option>
-              <option value="NotStarted">Not started</option>
-              <option value="InProgress">In progress</option>
-              <option value="Completed">Completed</option>
-            </select>
-            <input
-              type="number"
-              min={0}
-              placeholder="Sprint #"
-              value={filterSprint === '' ? '' : String(filterSprint)}
-              onChange={e => setFilterSprint(e.target.value === '' ? '' : Number(e.target.value))}
-              style={{ maxWidth: 100 }}
-            />
-            <select
-              value={filterCategory}
-              onChange={e => setFilterCategory(e.target.value as TaskCategory | '')}
-              style={{ width: 'auto' }}
-            >
-              <option value="">All categories</option>
-              {CATEGORIES.map(c => (
-                <option key={c} value={c}>
-                  {c.replace(/([A-Z])/g, ' $1').trim()}
-                </option>
-              ))}
-            </select>
-            <select
-              value={filterAssignee === '' ? '' : String(filterAssignee)}
-              onChange={e => setFilterAssignee(e.target.value === '' ? '' : Number(e.target.value))}
-              style={{ width: 'auto', minWidth: 120 }}
-            >
-              <option value="">Any assignee</option>
-              {members.map(m => (
-                <option key={m.id} value={m.id}>
-                  {m.name}
-                </option>
-              ))}
-            </select>
-            <select
-              value={filterPriority}
-              onChange={e => setFilterPriority(e.target.value as TaskPriority | '')}
-              style={{ width: 'auto' }}
-            >
-              <option value="">All priorities</option>
-              {PRIORITIES.map(p => (
-                <option key={p} value={p}>
-                  {p}
-                </option>
-              ))}
-            </select>
-            <select
-              value={sortKey}
-              onChange={e => setSortKey(e.target.value as SortKey)}
-              style={{ width: 'auto' }}
-            >
-              <option value="deadline">Sort: Deadline</option>
-              <option value="priority">Sort: Priority</option>
-              <option value="name">Sort: Name</option>
-              <option value="updated">Sort: Updated</option>
-            </select>
-            <span style={{ fontSize: 13, color: 'var(--text-muted)', marginLeft: 'auto' }}>
-              {visible.length} task{visible.length !== 1 ? 's' : ''}
-            </span>
-          </div>
-        </div>
-
-        {/* ── Task list ── */}
-        {visible.length === 0 ? (
-          <div className="empty-state">
-            <div className="empty-title">No tasks match</div>
-            <div>Try clearing filters or create a task.</div>
-            <button type="button" className="btn btn-primary mt-2" onClick={() => setEditingTask('new')}>
-              New task
-            </button>
-          </div>
-        ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            {visible.map(task => (
-              <TaskCard
-                key={task.id}
-                task={task}
-                currentMember={currentMember}
-                onEdit={() => setEditingTask(task)}
-                onDelete={() => setDeletingId(task.id)}
-                onStatusChange={async status => {
-                  await updateTaskStatus(task.id, status, currentMember?.id);
-                  load();
-                }}
-                onSubtaskToggle={async sub => {
-                  await updateSubtask(sub.id, sub.name, !sub.isCompleted);
-                  load();
-                }}
-                onSubtaskAdd={async name => {
-                  await createSubtask(task.id, name);
-                  load();
-                }}
-                onSubtaskDelete={async id => {
-                  await deleteSubtask(id);
-                  load();
-                }}
-                onAssignSelf={async () => {
-                  if (!currentMember) return;
-                  const existing = task.assignments.map(a => a.groupMemberId);
-                  await assignTask(task.id, [...existing, currentMember.id], currentMember.id);
-                  load();
-                }}
-              />
+      <div className="panel toolbar-panel">
+        <div className="toolbar">
+          <input
+            className="input-inline toolbar-search"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="Search"
+            aria-label="Search tasks"
+          />
+          <div className="toolbar-seg">
+            {(['all', 'mine', 'incomplete', 'completed'] as FilterView[]).map(v => (
+              <button
+                key={v}
+                type="button"
+                className={`toolbar-seg-btn${view === v ? ' is-on' : ''}`}
+                onClick={() => setView(v)}
+              >
+                {v === 'all' ? 'All' : v === 'mine' ? 'Mine' : v === 'incomplete' ? 'Open' : 'Done'}
+              </button>
             ))}
           </div>
-        )}
+        </div>
+        <div className="toolbar toolbar--second">
+          <select
+            className="select-compact"
+            value={filterStatus}
+            onChange={e => setFilterStatus(e.target.value as TaskStatus | '')}
+            aria-label="Filter by status"
+          >
+            <option value="">Any status</option>
+            <option value="NotStarted">To do</option>
+            <option value="InProgress">In progress</option>
+            <option value="Completed">Done</option>
+          </select>
+          <input
+            className="input-inline input-sprint"
+            type="number"
+            min={0}
+            placeholder="Sprint"
+            value={filterSprint === '' ? '' : String(filterSprint)}
+            onChange={e => setFilterSprint(e.target.value === '' ? '' : Number(e.target.value))}
+            aria-label="Filter by sprint"
+          />
+          <select
+            className="select-compact"
+            value={filterCategory}
+            onChange={e => setFilterCategory(e.target.value as TaskCategory | '')}
+            aria-label="Filter by category"
+          >
+            <option value="">Any category</option>
+            {CATEGORIES.map(c => (
+              <option key={c} value={c}>
+                {c.replace(/([A-Z])/g, ' $1').trim()}
+              </option>
+            ))}
+          </select>
+          <select
+            className="select-compact"
+            value={filterAssignee === '' ? '' : String(filterAssignee)}
+            onChange={e => setFilterAssignee(e.target.value === '' ? '' : Number(e.target.value))}
+            aria-label="Filter by assignee"
+          >
+            <option value="">Anyone</option>
+            {members.map(m => (
+              <option key={m.id} value={m.id}>
+                {m.name}
+              </option>
+            ))}
+          </select>
+          <select
+            className="select-compact"
+            value={filterPriority}
+            onChange={e => setFilterPriority(e.target.value as TaskPriority | '')}
+            aria-label="Filter by priority"
+          >
+            <option value="">Any priority</option>
+            {PRIORITIES.map(p => (
+              <option key={p} value={p}>
+                {p}
+              </option>
+            ))}
+          </select>
+          <select
+            className="select-compact"
+            value={sortKey}
+            onChange={e => setSortKey(e.target.value as SortKey)}
+            aria-label="Sort"
+          >
+            <option value="deadline">By deadline</option>
+            <option value="priority">By priority</option>
+            <option value="name">By name</option>
+            <option value="updated">By updated</option>
+          </select>
+          <span className="toolbar-count">{visible.length} shown</span>
+        </div>
       </div>
+
+      <div className="task-list-header" aria-hidden>
+        <span>Task</span>
+        <span>Assignee</span>
+        <span>Due</span>
+        <span>Pri</span>
+        <span>Status</span>
+        <span />
+      </div>
+
+      {visible.length === 0 ? (
+        <div className="panel panel-empty">
+          <p className="panel-empty-title">No tasks match</p>
+          <p className="text-muted text-sm">Adjust filters or add a task.</p>
+          <button type="button" className="btn btn-primary btn-sm mt-2" onClick={() => setEditingTask('new')}>
+            New task
+          </button>
+        </div>
+      ) : (
+        <div className="task-list">
+          {visible.map(task => (
+            <TaskRow
+              key={task.id}
+              task={task}
+              currentMember={currentMember}
+              onEdit={() => setEditingTask(task)}
+              onDelete={() => setDeletingId(task.id)}
+              onStatusChange={async status => {
+                await updateTaskStatus(task.id, status, currentMember?.id);
+                load();
+              }}
+              onSubtaskToggle={async sub => {
+                await updateSubtask(sub.id, sub.name, !sub.isCompleted);
+                load();
+              }}
+              onSubtaskAdd={async name => {
+                await createSubtask(task.id, name);
+                load();
+              }}
+              onSubtaskDelete={async id => {
+                await deleteSubtask(id);
+                load();
+              }}
+              onAssignSelf={async () => {
+                if (!currentMember) return;
+                const existing = task.assignments.map(a => a.groupMemberId);
+                await assignTask(task.id, [...existing, currentMember.id], currentMember.id);
+                load();
+              }}
+            />
+          ))}
+        </div>
+      )}
 
       {/* Modals */}
       {editingTask && (

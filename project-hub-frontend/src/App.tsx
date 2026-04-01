@@ -76,7 +76,7 @@ export default function App() {
         <Routes>
           <Route path="/" element={<HomePage />} />
           <Route path="/tasks" element={<TasksPage currentMember={user} members={members} />} />
-          <Route path="/scrum" element={<ScrumPage currentMember={user} members={members} />} />
+          <Route path="/scrum" element={<ScrumPage currentMember={user} />} />
           <Route path="/resources" element={<ResourcesPage currentMember={user} members={members} />} />
           <Route path="/schedule" element={<SchedulePage currentMember={user} members={members} />} />
         </Routes>

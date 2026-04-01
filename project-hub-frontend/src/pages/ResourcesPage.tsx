@@ -38,7 +38,7 @@ const CLASS_LABELS: Record<ClassLinkCategory, string> = {
 };
 
 function SectionTitle({ children }: { children: React.ReactNode }) {
-  return <h2 className="section-title">{children}</h2>;
+  return <h2 className="panel-heading">{children}</h2>;
 }
 
 function copyText(text: string) {
@@ -70,13 +70,13 @@ export default function ResourcesPage({}: Props) {
   const classLinks = bySection('ClassLink');
 
   return (
-    <div className="page-stack">
-      <header className="page-header">
-        <h1>Resources</h1>
-        <p className="page-lead">Links, credentials, and reference material</p>
+    <div className="page">
+      <header className="page-title-block">
+        <h1 className="page-title">Resources</h1>
+        <p className="page-subtitle">Links, logins, and notes</p>
       </header>
 
-      <section className="card-section">
+      <section className="panel">
         <div className="flex-between mb-3">
           <SectionTitle>Quick links</SectionTitle>
           <button type="button" className="btn btn-primary btn-sm" onClick={() => setEditingLink('new')}>
@@ -123,7 +123,7 @@ export default function ResourcesPage({}: Props) {
         onDelete={id => deleteResourceRow(id).then(load)}
       />
 
-      <section className="card-section">
+      <section className="panel">
         <div className="flex-between mb-3">
           <SectionTitle>Class links</SectionTitle>
           <button
@@ -169,7 +169,7 @@ export default function ResourcesPage({}: Props) {
         })}
       </section>
 
-      <section className="card-section">
+      <section className="panel">
         <div className="flex-between mb-3">
           <SectionTitle>Logins</SectionTitle>
           <button type="button" className="btn btn-primary btn-sm" onClick={() => setEditingLogin('new')}>
@@ -217,7 +217,7 @@ export default function ResourcesPage({}: Props) {
         )}
       </section>
 
-      <section className="card-section">
+      <section className="panel">
         <div className="flex-between mb-3">
           <SectionTitle>Notes</SectionTitle>
           <button type="button" className="btn btn-primary btn-sm" onClick={() => setEditingNote('new')}>
@@ -320,7 +320,7 @@ function ResourceBlock({
   onDelete: (id: number) => void;
 }) {
   return (
-    <section className="card-section">
+    <section className="panel">
       <div className="flex-between mb-3">
         <SectionTitle>{title}</SectionTitle>
         <button type="button" className="btn btn-primary btn-sm" onClick={onAdd}>
