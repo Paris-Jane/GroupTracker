@@ -10,9 +10,11 @@ export interface TaskFormModalProps {
   members: GroupMember[];
   onSave: (data: CreateTaskDto & { assigneeIds: number[]; subtaskNames: string[] }) => void;
   onClose: () => void;
+  /** Shown only when editing an existing task; typically closes modal and opens delete confirm. */
+  onDelete?: () => void;
 }
 
-export default function TaskFormModal({ task, members, onSave, onClose }: TaskFormModalProps) {
+export default function TaskFormModal({ task, members, onSave, onClose, onDelete }: TaskFormModalProps) {
   const [name, setName] = useState(task?.name ?? '');
   const [notes, setNotes] = useState(task?.notes ?? '');
   const [estimatedTime, setEstimatedTime] = useState(task?.estimatedTime ?? '');
@@ -150,35 +152,44 @@ export default function TaskFormModal({ task, members, onSave, onClose }: TaskFo
             </div>
           </div>
         </div>
-        <div className="modal-footer">
-          <button type="button" className="btn btn-secondary" onClick={onClose}>
-            Cancel
-          </button>
-          <button
-            type="button"
-            className="btn btn-primary"
-            disabled={!name.trim()}
-            onClick={() =>
-              onSave({
-                name,
-                notes,
-                estimatedTime,
-                deadline: deadline || undefined,
-                priority,
-                isRequired,
-                status,
-                tags,
-                sprintNumber: sprintNumber ? Number(sprintNumber) : undefined,
-                category,
-                evaluation: evaluation ? Number(evaluation) : undefined,
-                definitionOfDone: definitionOfDone || undefined,
-                assigneeIds,
-                subtaskNames,
-              })
-            }
-          >
-            {task ? 'Save' : 'Create'}
-          </button>
+        <div className="modal-footer modal-footer--split">
+          <div>
+            {task && onDelete && (
+              <button type="button" className="btn btn-ghost btn-sm text-danger" onClick={onDelete}>
+                Delete task
+              </button>
+            )}
+          </div>
+          <div className="modal-footer-actions">
+            <button type="button" className="btn btn-secondary" onClick={onClose}>
+              Cancel
+            </button>
+            <button
+              type="button"
+              className="btn btn-primary"
+              disabled={!name.trim()}
+              onClick={() =>
+                onSave({
+                  name,
+                  notes,
+                  estimatedTime,
+                  deadline: deadline || undefined,
+                  priority,
+                  isRequired,
+                  status,
+                  tags,
+                  sprintNumber: sprintNumber ? Number(sprintNumber) : undefined,
+                  category,
+                  evaluation: evaluation ? Number(evaluation) : undefined,
+                  definitionOfDone: definitionOfDone || undefined,
+                  assigneeIds,
+                  subtaskNames,
+                })
+              }
+            >
+              {task ? 'Save' : 'Create'}
+            </button>
+          </div>
         </div>
       </div>
     </div>

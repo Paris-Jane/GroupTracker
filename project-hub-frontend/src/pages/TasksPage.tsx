@@ -1,10 +1,9 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useRef, useCallback } from 'react';
 import {
   getTasks, createTask, updateTask, deleteTask,
   updateTaskStatus, assignTask,
-  createSubtask, updateSubtask, deleteSubtask,
 } from '../api/client';
-import type { TaskItem, GroupMember, TaskStatus, TaskPriority, SubtaskItem, TaskCategory, CreateTaskDto } from '../types';
+import type { TaskItem, GroupMember, TaskStatus, TaskPriority, CreateTaskDto } from '../types';
 import { PriorityBadge } from '../components/common/StatusBadge';
 import Avatar from '../components/common/Avatar';
 import ConfirmDialog from '../components/common/ConfirmDialog';
@@ -22,12 +21,6 @@ type FilterView = 'all' | 'mine' | 'incomplete' | 'completed';
 type SortKey = 'deadline' | 'priority' | 'name' | 'updated';
 
 const PRIORITIES: TaskPriority[] = ['High', 'Medium', 'Low'];
-const CATEGORIES: TaskCategory[] = ['ProductBacklog', 'SprintGoal', 'SprintBacklog', 'Other'];
-
-function formatDeadline(d?: string) {
-  if (!d) return null;
-  return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-}
 
 function isOverdue(deadline?: string, status?: TaskStatus) {
   if (!deadline || status === 'Completed') return false;
@@ -36,70 +29,84 @@ function isOverdue(deadline?: string, status?: TaskStatus) {
 
 function priorityOrder(p: TaskPriority) { return p === 'High' ? 0 : p === 'Medium' ? 1 : 2; }
 
-// ── Task row (scannable list) ───────────────────────────────────────────────
+function nextTaskStatus(s: TaskStatus): TaskStatus {
+  if (s === 'NotStarted') return 'InProgress';
+  if (s === 'InProgress') return 'Completed';
+  return 'NotStarted';
+}
+
+function statusChipLabel(s: TaskStatus) {
+  if (s === 'NotStarted') return 'To do';
+  if (s === 'InProgress') return 'In progress';
+  return 'Done';
+}
+
+// ── Task row ───────────────────────────────────────────────────────────────
 
 interface TaskRowProps {
   task: TaskItem;
-  currentMember: GroupMember | null;
-  onEdit: () => void;
-  onDelete: () => void;
-  onStatusChange: (status: TaskStatus) => void;
-  onSubtaskToggle: (subtask: SubtaskItem) => void;
-  onSubtaskAdd: (name: string) => void;
-  onSubtaskDelete: (id: number) => void;
-  onAssignSelf: () => void;
+  members: GroupMember[];
+  onOpen: () => void;
+  onStatusCycle: () => void;
+  onAssigneesChange: (memberIds: number[]) => Promise<void>;
 }
 
 function TaskRow({
   task,
-  currentMember,
-  onEdit,
-  onDelete,
-  onStatusChange,
-  onSubtaskToggle,
-  onSubtaskAdd,
-  onSubtaskDelete,
-  onAssignSelf,
+  members,
+  onOpen,
+  onStatusCycle,
+  onAssigneesChange,
 }: TaskRowProps) {
-  const [expanded, setExpanded] = useState(false);
-  const [newSub, setNewSub] = useState('');
-  const completedSubs = task.subtasks.filter(s => s.isCompleted).length;
+  const [assignOpen, setAssignOpen] = useState(false);
+  const assignWrapRef = useRef<HTMLDivElement>(null);
   const overdue = isOverdue(task.deadline, task.status);
-  const isAssigned = currentMember && task.assignments.some(a => a.groupMemberId === currentMember.id);
   const statusClass =
     task.status === 'Completed' ? 'completed' : task.status === 'InProgress' ? 'inprogress' : 'notstarted';
 
+  const closeOnOutside = useCallback((e: MouseEvent) => {
+    if (assignWrapRef.current && !assignWrapRef.current.contains(e.target as Node)) {
+      setAssignOpen(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!assignOpen) return;
+    document.addEventListener('mousedown', closeOnOutside);
+    return () => document.removeEventListener('mousedown', closeOnOutside);
+  }, [assignOpen, closeOnOutside]);
+
+  const assignedIds = task.assignments.map(a => a.groupMemberId);
+
+  const toggleAssignee = async (memberId: number) => {
+    const next = assignedIds.includes(memberId)
+      ? assignedIds.filter(id => id !== memberId)
+      : [...assignedIds, memberId];
+    await onAssigneesChange(next);
+  };
+
   return (
     <div className="task-row-wrap">
-      <div className={`task-row task-row--${statusClass}${overdue ? ' task-row--overdue' : ''}`}>
+      <div
+        role="button"
+        tabIndex={0}
+        className={`task-row task-row--${statusClass}${overdue ? ' task-row--overdue' : ''}`}
+        onClick={onOpen}
+        onKeyDown={e => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            onOpen();
+          }
+        }}
+      >
         <div className="task-row-name">
           <span className={task.status === 'Completed' ? 'task-row-title task-row-title--done' : 'task-row-title'}>
             {task.name}
           </span>
-          {task.notes && <p className="task-row-notes">{task.notes}</p>}
         </div>
-        <div className="task-row-assignees">
-          {task.assignments.length === 0 ? (
-            <span className="text-muted text-xs">Unassigned</span>
-          ) : (
-            <div className="task-row-avatar-stack">
-              {task.assignments.map(a => (
-                <Avatar
-                  key={a.id}
-                  initial={a.memberAvatarInitial}
-                  color={a.memberColor}
-                  size="sm"
-                  name={a.memberName}
-                />
-              ))}
-            </div>
-          )}
-        </div>
-        <div className="task-row-due">
-          {task.deadline ? (
-            <span className={overdue ? 'task-row-due-text task-row-due-text--late' : 'task-row-due-text'}>
-              {formatDeadline(task.deadline)}
-            </span>
+        <div className="task-row-sprint">
+          {task.sprintNumber != null ? (
+            <span className="task-row-sprint-num">S{task.sprintNumber}</span>
           ) : (
             <span className="text-muted text-xs">—</span>
           )}
@@ -108,68 +115,72 @@ function TaskRow({
           <PriorityBadge priority={task.priority} />
         </div>
         <div className="task-row-status">
-          <select
-            className="select-compact"
-            value={task.status}
-            onChange={e => onStatusChange(e.target.value as TaskStatus)}
-            aria-label="Status"
+          <button
+            type="button"
+            className={`task-status-chip task-status-chip--${statusClass}`}
+            onClick={e => {
+              e.stopPropagation();
+              onStatusCycle();
+            }}
+            aria-label={`Status: ${statusChipLabel(task.status)}. Click for next status.`}
           >
-            <option value="NotStarted">To do</option>
-            <option value="InProgress">In progress</option>
-            <option value="Completed">Done</option>
-          </select>
+            {statusChipLabel(task.status)}
+          </button>
         </div>
-        <div className="task-row-actions">
-          {task.subtasks.length > 0 && (
-            <button type="button" className="btn btn-ghost btn-xs" onClick={() => setExpanded(e => !e)}>
-              {expanded ? 'Hide' : `Subtasks (${completedSubs}/${task.subtasks.length})`}
+        <div
+          className="task-row-assignees"
+          ref={assignWrapRef}
+          onClick={e => e.stopPropagation()}
+          onKeyDown={e => e.stopPropagation()}
+        >
+          {task.assignments.length > 0 ? (
+            <button
+              type="button"
+              className="task-row-avatar-trigger"
+              onClick={() => setAssignOpen(o => !o)}
+              aria-expanded={assignOpen}
+              aria-label="Edit assignees"
+            >
+              <div className="task-row-avatar-stack">
+                {task.assignments.map(a => (
+                  <Avatar
+                    key={a.id}
+                    initial={a.memberAvatarInitial}
+                    color={a.memberColor}
+                    size="sm"
+                    name={a.memberName}
+                  />
+                ))}
+              </div>
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="task-assign-add"
+              onClick={() => setAssignOpen(o => !o)}
+              aria-expanded={assignOpen}
+              aria-label="Assign people"
+            >
+              <span aria-hidden>+</span>
             </button>
           )}
-          {!isAssigned && currentMember && (
-            <button type="button" className="btn btn-secondary btn-xs" onClick={onAssignSelf}>
-              Me
-            </button>
+          {assignOpen && (
+            <div className="task-assign-popover" role="dialog" aria-label="Choose assignees">
+              {members.map(m => (
+                <label key={m.id} className="task-assign-popover-row">
+                  <input
+                    type="checkbox"
+                    checked={assignedIds.includes(m.id)}
+                    onChange={() => void toggleAssignee(m.id)}
+                  />
+                  <Avatar initial={m.avatarInitial} color={m.color} size="sm" name={m.name} />
+                  <span>{m.name}</span>
+                </label>
+              ))}
+            </div>
           )}
-          <button type="button" className="btn btn-secondary btn-xs" onClick={onEdit}>
-            Edit
-          </button>
-          <button type="button" className="btn btn-ghost btn-xs text-danger" onClick={onDelete}>
-            Delete
-          </button>
         </div>
       </div>
-      {expanded && task.subtasks.length > 0 && (
-        <div className="task-row-detail">
-          {task.subtasks.map(s => (
-            <div key={s.id} className="task-row-sub">
-              <input
-                type="checkbox"
-                checked={s.isCompleted}
-                onChange={() => onSubtaskToggle(s)}
-                className="task-row-sub-check"
-              />
-              <span className={s.isCompleted ? 'task-row-sub-name task-row-sub-name--done' : 'task-row-sub-name'}>
-                {s.name}
-              </span>
-              <button type="button" className="btn btn-ghost btn-xs" onClick={() => onSubtaskDelete(s.id)}>
-                Remove
-              </button>
-            </div>
-          ))}
-          <div className="task-row-sub-add">
-            <input
-              value={newSub}
-              onChange={e => setNewSub(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && newSub.trim() && (onSubtaskAdd(newSub.trim()), setNewSub(''))}
-              placeholder="Add subtask"
-              className="input-inline"
-            />
-            <button type="button" className="btn btn-secondary btn-xs" onClick={() => newSub.trim() && (onSubtaskAdd(newSub.trim()), setNewSub(''))}>
-              Add
-            </button>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
@@ -189,13 +200,20 @@ export default function TasksPage({ currentMember, members }: Props) {
   const [showPick, setShowPick] = useState(false);
   const [filterStatus, setFilterStatus] = useState<TaskStatus | ''>('');
   const [filterSprint, setFilterSprint] = useState<number | ''>('');
-  const [filterCategory, setFilterCategory] = useState<TaskCategory | ''>('');
   const [filterAssignee, setFilterAssignee] = useState<number | ''>('');
 
   const load = () => getTasks().then(setTasks);
   useEffect(() => { load(); }, []);
 
-  // ── Filtered / sorted tasks ──
+  const sprintOptions = useMemo(() => {
+    const s = new Set<number>();
+    for (const t of tasks) {
+      if (t.sprintNumber != null && !Number.isNaN(Number(t.sprintNumber))) {
+        s.add(t.sprintNumber);
+      }
+    }
+    return [...s].sort((a, b) => a - b);
+  }, [tasks]);
 
   const visible = useMemo(() => {
     let list = [...tasks];
@@ -205,7 +223,6 @@ export default function TasksPage({ currentMember, members }: Props) {
     if (filterPriority) list = list.filter(t => t.priority === filterPriority);
     if (filterStatus) list = list.filter(t => t.status === filterStatus);
     if (filterSprint !== '') list = list.filter(t => t.sprintNumber === filterSprint);
-    if (filterCategory) list = list.filter(t => t.category === filterCategory);
     if (filterAssignee !== '') {
       list = list.filter(t => t.assignments.some(a => a.groupMemberId === filterAssignee));
     }
@@ -232,7 +249,6 @@ export default function TasksPage({ currentMember, members }: Props) {
     filterPriority,
     filterStatus,
     filterSprint,
-    filterCategory,
     filterAssignee,
     currentMember,
   ]);
@@ -247,6 +263,14 @@ export default function TasksPage({ currentMember, members }: Props) {
     }
     setEditingTask(null);
     load();
+  };
+
+  const handleModalDelete = () => {
+    if (editingTask && editingTask !== 'new') {
+      const id = editingTask.id;
+      setEditingTask(null);
+      setDeletingId(id);
+    }
   };
 
   return (
@@ -295,6 +319,7 @@ export default function TasksPage({ currentMember, members }: Props) {
           </div>
         </div>
         <div className="toolbar toolbar--second">
+          <span className="toolbar-group-label">Filter</span>
           <select
             className="select-compact"
             value={filterStatus}
@@ -306,25 +331,16 @@ export default function TasksPage({ currentMember, members }: Props) {
             <option value="InProgress">In progress</option>
             <option value="Completed">Done</option>
           </select>
-          <input
-            className="input-inline input-sprint"
-            type="number"
-            min={0}
-            placeholder="Sprint"
+          <select
+            className="select-compact"
             value={filterSprint === '' ? '' : String(filterSprint)}
             onChange={e => setFilterSprint(e.target.value === '' ? '' : Number(e.target.value))}
             aria-label="Filter by sprint"
-          />
-          <select
-            className="select-compact"
-            value={filterCategory}
-            onChange={e => setFilterCategory(e.target.value as TaskCategory | '')}
-            aria-label="Filter by category"
           >
-            <option value="">Any category</option>
-            {CATEGORIES.map(c => (
-              <option key={c} value={c}>
-                {c.replace(/([A-Z])/g, ' $1').trim()}
+            <option value="">All sprints</option>
+            {sprintOptions.map(n => (
+              <option key={n} value={n}>
+                Sprint {n}
               </option>
             ))}
           </select>
@@ -354,28 +370,32 @@ export default function TasksPage({ currentMember, members }: Props) {
               </option>
             ))}
           </select>
-          <select
-            className="select-compact"
-            value={sortKey}
-            onChange={e => setSortKey(e.target.value as SortKey)}
-            aria-label="Sort"
-          >
-            <option value="deadline">By deadline</option>
-            <option value="priority">By priority</option>
-            <option value="name">By name</option>
-            <option value="updated">By updated</option>
-          </select>
           <span className="toolbar-count">{visible.length} shown</span>
+          <div className="toolbar-sort-group">
+            <span className="toolbar-group-label" id="tasks-sort-label">
+              Sort by
+            </span>
+            <select
+              className="select-compact"
+              value={sortKey}
+              onChange={e => setSortKey(e.target.value as SortKey)}
+              aria-labelledby="tasks-sort-label"
+            >
+              <option value="deadline">Deadline</option>
+              <option value="priority">Priority</option>
+              <option value="name">Name</option>
+              <option value="updated">Last updated</option>
+            </select>
+          </div>
         </div>
       </div>
 
       <div className="task-list-header" aria-hidden>
         <span>Task</span>
-        <span>Assignee</span>
-        <span>Due</span>
+        <span>Sprint</span>
         <span>Pri</span>
         <span>Status</span>
-        <span />
+        <span className="task-list-header-assignee">Assignee</span>
       </div>
 
       {visible.length === 0 ? (
@@ -392,29 +412,14 @@ export default function TasksPage({ currentMember, members }: Props) {
             <TaskRow
               key={task.id}
               task={task}
-              currentMember={currentMember}
-              onEdit={() => setEditingTask(task)}
-              onDelete={() => setDeletingId(task.id)}
-              onStatusChange={async status => {
-                await updateTaskStatus(task.id, status, currentMember?.id);
+              members={members}
+              onOpen={() => setEditingTask(task)}
+              onStatusCycle={async () => {
+                await updateTaskStatus(task.id, nextTaskStatus(task.status), currentMember?.id);
                 load();
               }}
-              onSubtaskToggle={async sub => {
-                await updateSubtask(sub.id, sub.name, !sub.isCompleted);
-                load();
-              }}
-              onSubtaskAdd={async name => {
-                await createSubtask(task.id, name);
-                load();
-              }}
-              onSubtaskDelete={async id => {
-                await deleteSubtask(id);
-                load();
-              }}
-              onAssignSelf={async () => {
-                if (!currentMember) return;
-                const existing = task.assignments.map(a => a.groupMemberId);
-                await assignTask(task.id, [...existing, currentMember.id], currentMember.id);
+              onAssigneesChange={async ids => {
+                await assignTask(task.id, ids, currentMember?.id);
                 load();
               }}
             />
@@ -422,13 +427,13 @@ export default function TasksPage({ currentMember, members }: Props) {
         </div>
       )}
 
-      {/* Modals */}
       {editingTask && (
         <TaskFormModal
           task={editingTask === 'new' ? undefined : editingTask}
           members={members}
           onSave={handleSave}
           onClose={() => setEditingTask(null)}
+          onDelete={editingTask !== 'new' ? handleModalDelete : undefined}
         />
       )}
       {deletingId !== null && (
