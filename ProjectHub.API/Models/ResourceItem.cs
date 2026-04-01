@@ -2,8 +2,10 @@ namespace ProjectHub.API.Models;
 
 public enum ResourceType
 {
-    TeacherProvided,
-    Other
+    ProjectResource = 0,
+    ClassLink = 1,
+    Other = 2,
+    OtherNote = 3
 }
 
 public class ResourceItem
@@ -13,6 +15,7 @@ public class ResourceItem
     public string? Description { get; set; }
     public ResourceType Type { get; set; } = ResourceType.Other;
     public string? Category { get; set; }
+    public string? ClassCategory { get; set; }
     public string? Url { get; set; }
     public string? Notes { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

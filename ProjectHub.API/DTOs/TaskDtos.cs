@@ -29,6 +29,13 @@ public record TaskItemDto(
     bool IsRequired,
     string Status,
     string? Tags,
+    int? SprintNumber,
+    string Category,
+    int? Evaluation,
+    string? DefinitionOfDone,
+    bool AcceptedByPO,
+    bool IsBlocked,
+    string? BlockedReason,
     DateTime CreatedAt,
     DateTime UpdatedAt,
     List<SubtaskDto> Subtasks,
@@ -44,6 +51,13 @@ public record CreateTaskItemDto(
     bool IsRequired,
     TaskStatus Status,
     string? Tags,
+    int? SprintNumber,
+    TaskCategory Category,
+    int? Evaluation,
+    string? DefinitionOfDone,
+    bool AcceptedByPO,
+    bool IsBlocked,
+    string? BlockedReason,
     List<int>? AssigneeIds,
     List<string>? SubtaskNames
 );
@@ -56,7 +70,14 @@ public record UpdateTaskItemDto(
     TaskPriority Priority,
     bool IsRequired,
     TaskStatus Status,
-    string? Tags
+    string? Tags,
+    int? SprintNumber,
+    TaskCategory Category,
+    int? Evaluation,
+    string? DefinitionOfDone,
+    bool AcceptedByPO,
+    bool IsBlocked,
+    string? BlockedReason
 );
 
 public record UpdateTaskStatusDto(TaskStatus Status);
@@ -72,10 +93,19 @@ public record BulkImportTaskDto(
     bool IsRequired,
     TaskStatus Status,
     string? Tags,
+    int? SprintNumber,
+    TaskCategory Category,
     List<string>? SubtaskNames,
-    List<string>? AssigneeNames   // matched by name against existing members
+    List<string>? AssigneeNames
 );
 
 public record CreateSubtaskDto(string Name);
 
 public record UpdateSubtaskDto(string Name, bool IsCompleted);
+
+public record UpdateTaskUpdateDto(
+    TaskStatus Status,
+    bool AcceptedByPO,
+    bool IsBlocked,
+    string? BlockedReason
+);

@@ -10,7 +10,7 @@ public class TaskService(AppDbContext db)
 {
     // ── Helpers ────────────────────────────────────────────────────────────
 
-    private static TaskItemDto ToDto(TaskItem t) => new(
+    public static TaskItemDto ToDto(TaskItem t) => new(
         t.Id,
         t.Name,
         t.Description,
@@ -20,6 +20,13 @@ public class TaskService(AppDbContext db)
         t.IsRequired,
         t.Status.ToString(),
         t.Tags,
+        t.SprintNumber,
+        t.Category.ToString(),
+        t.Evaluation,
+        t.DefinitionOfDone,
+        t.AcceptedByPO,
+        t.IsBlocked,
+        t.BlockedReason,
         t.CreatedAt,
         t.UpdatedAt,
         t.Subtasks.Select(s => new SubtaskDto(s.Id, s.TaskItemId, s.Name, s.IsCompleted, s.CreatedAt)).ToList(),
@@ -69,6 +76,13 @@ public class TaskService(AppDbContext db)
               .Select(t => ToDto(t))
               .ToListAsync();
 
+    public async Task<List<TaskItemDto>> GetBySprintAsync(int sprintNumber) =>
+        await WithIncludes()
+              .Where(t => t.SprintNumber == sprintNumber)
+              .OrderByDescending(t => t.CreatedAt)
+              .Select(t => ToDto(t))
+              .ToListAsync();
+
     public async Task<TaskItemDto> CreateAsync(CreateTaskItemDto dto, int? actorId)
     {
         var task = new TaskItem
@@ -81,6 +95,13 @@ public class TaskService(AppDbContext db)
             IsRequired = dto.IsRequired,
             Status = dto.Status,
             Tags = dto.Tags,
+            SprintNumber = dto.SprintNumber,
+            Category = dto.Category,
+            Evaluation = dto.Evaluation,
+            DefinitionOfDone = dto.DefinitionOfDone,
+            AcceptedByPO = dto.AcceptedByPO,
+            IsBlocked = dto.IsBlocked,
+            BlockedReason = dto.BlockedReason,
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow,
         };
@@ -117,6 +138,13 @@ public class TaskService(AppDbContext db)
         task.IsRequired = dto.IsRequired;
         task.Status = dto.Status;
         task.Tags = dto.Tags;
+        task.SprintNumber = dto.SprintNumber;
+        task.Category = dto.Category;
+        task.Evaluation = dto.Evaluation;
+        task.DefinitionOfDone = dto.DefinitionOfDone;
+        task.AcceptedByPO = dto.AcceptedByPO;
+        task.IsBlocked = dto.IsBlocked;
+        task.BlockedReason = dto.BlockedReason;
         task.UpdatedAt = DateTime.UtcNow;
 
         await db.SaveChangesAsync();
@@ -152,7 +180,6 @@ public class TaskService(AppDbContext db)
         var task = await db.TaskItems.Include(t => t.TaskAssignments).FirstOrDefaultAsync(t => t.Id == taskId);
         if (task is null) return null;
 
-        // Replace all assignments
         db.TaskAssignments.RemoveRange(task.TaskAssignments);
 
         foreach (var mid in memberIds.Distinct())
@@ -219,7 +246,9 @@ public class TaskService(AppDbContext db)
             var createDto = new CreateTaskItemDto(
                 dto.Name, dto.Description, dto.EstimatedTime,
                 dto.Deadline, dto.Priority, dto.IsRequired,
-                dto.Status, dto.Tags, assigneeIds, dto.SubtaskNames);
+                dto.Status, dto.Tags, dto.SprintNumber, dto.Category,
+                null, null, false, false, null,
+                assigneeIds, dto.SubtaskNames);
 
             created.Add(await CreateAsync(createDto, actorId));
         }
@@ -241,6 +270,7 @@ public class TaskService(AppDbContext db)
                     u.GroupMemberId,
                     u.GroupMember != null ? u.GroupMember.Name : null,
                     u.GroupMember != null ? u.GroupMember.Color : null,
+                    u.GroupMember != null ? u.GroupMember.AvatarInitial : null,
                     u.ActionType,
                     u.Message,
                     u.CreatedAt))

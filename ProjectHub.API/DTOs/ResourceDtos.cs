@@ -36,6 +36,7 @@ public record ResourceItemDto(
     string? Description,
     string Type,
     string? Category,
+    string? ClassCategory,
     string? Url,
     string? Notes,
     DateTime CreatedAt,
@@ -47,6 +48,7 @@ public record CreateResourceItemDto(
     string? Description,
     ResourceType Type,
     string? Category,
+    string? ClassCategory,
     string? Url,
     string? Notes
 );
@@ -56,6 +58,7 @@ public record UpdateResourceItemDto(
     string? Description,
     ResourceType Type,
     string? Category,
+    string? ClassCategory,
     string? Url,
     string? Notes
 );
@@ -66,7 +69,7 @@ public record RoomReservationDto(
     int Id,
     string RoomName,
     DateTime Date,
-    string StartTime,   // "HH:mm" formatted string for easy frontend use
+    string StartTime,
     string EndTime,
     int? GroupMemberId,
     string ReservedBy,
@@ -77,7 +80,7 @@ public record RoomReservationDto(
 public record CreateRoomReservationDto(
     string RoomName,
     DateTime Date,
-    string StartTime,   // "HH:mm"
+    string StartTime,
     string EndTime,
     int? GroupMemberId,
     string ReservedBy,
@@ -91,5 +94,34 @@ public record UpdateRoomReservationDto(
     string EndTime,
     int? GroupMemberId,
     string ReservedBy,
+    string? Notes
+);
+
+// ── Login Items ──────────────────────────────────────────────────────────────
+
+public record LoginItemDto(
+    int Id,
+    string Title,
+    string? SiteUrl,
+    string? LoginUsername,
+    string? LoginPassword,
+    string? Notes,
+    DateTime CreatedAt,
+    DateTime UpdatedAt
+);
+
+public record CreateLoginItemDto(
+    string Title,
+    string? SiteUrl,
+    string? LoginUsername,
+    string? LoginPassword,
+    string? Notes
+);
+
+public record UpdateLoginItemDto(
+    string Title,
+    string? SiteUrl,
+    string? LoginUsername,
+    string? LoginPassword,
     string? Notes
 );
