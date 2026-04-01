@@ -120,3 +120,4 @@
 /Users/parisward/intex2/ProjectHub.API/obj/Debug/net8.0/ProjectHub.API.pdb
 /Users/parisward/intex2/ProjectHub.API/obj/Debug/net8.0/ProjectHub.API.genruntimeconfig.cache
 /Users/parisward/intex2/ProjectHub.API/obj/Debug/net8.0/ref/ProjectHub.API.dll
+/Users/parisward/intex2/ProjectHub.API/obj/Debug/net8.0/ProjectHub.API.sourcelink.json

@@ -7,7 +7,7 @@ import type {
   TaskStatus, TaskPriority, ResourceType,
 } from '../types';
 
-const api = axios.create({ baseURL: 'http://localhost:5062/api' });
+const api = axios.create({ baseURL: 'http://localhost:5156/api' });
 
 // ── Group Members ──────────────────────────────────────────────────────────
 
