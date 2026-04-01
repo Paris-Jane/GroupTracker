@@ -2,13 +2,16 @@ import { useEffect, useState, useMemo } from 'react';
 import {
   getTasks,
   getRecentUpdates,
-  getLinks,
   getProjectSettings,
   getMembers,
   updateTaskStatus,
+  updateProjectSettings,
+  updateTask,
+  assignTask,
 } from '../api/client';
-import type { TaskItem, TaskUpdate, QuickLink, GroupMember, TaskStatus } from '../types';
+import type { TaskItem, TaskUpdate, GroupMember, TaskStatus, CreateTaskDto } from '../types';
 import UserAvatar from '../components/common/UserAvatar';
+import TaskFormModal from '../components/Tasks/TaskFormModal';
 import { useAuth } from '../auth/AuthContext';
 
 function formatDay(d: string) {
@@ -26,24 +29,68 @@ function nextStatus(s: TaskStatus): TaskStatus {
   return 'NotStarted';
 }
 
-function statusShort(s: TaskStatus) {
-  if (s === 'InProgress') return 'In progress';
-  if (s === 'Completed') return 'Done';
-  return 'To do';
+function linkDisplayUrl(raw?: string): string {
+  if (!raw?.trim()) return 'Set URL (right-click)';
+  try {
+    const u = raw.includes('://') ? raw : `https://${raw}`;
+    return new URL(u).hostname.replace(/^www\./, '') || raw;
+  } catch {
+    return raw.slice(0, 28) + (raw.length > 28 ? '…' : '');
+  }
+}
+
+type LinkEditKind = 'website' | 'github';
+
+function StatLinkCard({
+  kind,
+  url,
+  onEdit,
+}: {
+  kind: LinkEditKind;
+  url?: string;
+  onEdit: (k: LinkEditKind) => void;
+}) {
+  const open = () => {
+    const u = url?.trim();
+    if (u) {
+      const href = /^https?:\/\//i.test(u) ? u : `https://${u}`;
+      window.open(href, '_blank', 'noopener,noreferrer');
+    } else {
+      onEdit(kind);
+    }
+  };
+
+  return (
+    <button
+      type="button"
+      className={`stat-link-card stat-link-card--${kind}`}
+      onClick={open}
+      onContextMenu={e => {
+        e.preventDefault();
+        onEdit(kind);
+      }}
+      title={url ? `${kind === 'website' ? 'Website' : 'GitHub'} — right-click to edit URL` : 'Click to add URL, or right-click to edit'}
+    >
+      <span className="stat-link-card-kicker">{kind === 'website' ? 'Project site' : 'Repository'}</span>
+      <span className="stat-link-card-label">{kind === 'website' ? 'Website' : 'GitHub'}</span>
+      <span className="stat-link-card-url">{linkDisplayUrl(url)}</span>
+    </button>
+  );
 }
 
 export default function HomePage() {
   const { user } = useAuth();
   const [tasks, setTasks] = useState<TaskItem[]>([]);
   const [updates, setUpdates] = useState<TaskUpdate[]>([]);
-  const [links, setLinks] = useState<QuickLink[]>([]);
   const [settings, setSettings] = useState<Awaited<ReturnType<typeof getProjectSettings>> | null>(null);
   const [members, setMembers] = useState<GroupMember[]>([]);
+  const [editingTask, setEditingTask] = useState<TaskItem | null>(null);
+  const [linkEdit, setLinkEdit] = useState<LinkEditKind | null>(null);
+  const [urlDraft, setUrlDraft] = useState('');
 
   const load = () => {
     getTasks().then(setTasks);
-    getRecentUpdates(12).then(setUpdates);
-    getLinks().then(setLinks);
+    getRecentUpdates(10).then(setUpdates);
     getProjectSettings().then(setSettings);
     getMembers().then(setMembers);
   };
@@ -51,30 +98,34 @@ export default function HomePage() {
     load();
   }, []);
 
+  useEffect(() => {
+    if (!linkEdit || !settings) return;
+    setUrlDraft(linkEdit === 'website' ? (settings.websiteUrl ?? '') : (settings.githubUrl ?? ''));
+  }, [linkEdit, settings]);
+
   const stats = useMemo(() => {
     const total = tasks.length;
     const completed = tasks.filter(t => t.status === 'Completed').length;
     const inProgress = tasks.filter(t => t.status === 'InProgress').length;
-    const overdue = tasks.filter(
-      t => t.deadline && t.status !== 'Completed' && new Date(t.deadline) < new Date(),
-    ).length;
     const pct = total ? Math.round((completed / total) * 100) : 0;
-    return { total, completed, inProgress, overdue, pct };
+    return { completed, inProgress, pct };
   }, [tasks]);
 
-  const mine = useMemo(() => {
+  const mineSorted = useMemo(() => {
     if (!user) return [];
-    return tasks.filter(t => t.assignments.some(a => a.groupMemberId === user.id));
+    const list = tasks.filter(t => t.assignments.some(a => a.groupMemberId === user.id));
+    const rank = (t: TaskItem) => {
+      if (t.status === 'InProgress') return 0;
+      if (t.status === 'NotStarted') return 1;
+      return 2;
+    };
+    return [...list].sort((a, b) => {
+      const ra = rank(a);
+      const rb = rank(b);
+      if (ra !== rb) return ra - rb;
+      return (a.deadline ?? '').localeCompare(b.deadline ?? '');
+    });
   }, [tasks, user]);
-
-  const upcomingDeadlines = useMemo(() => {
-    const start = new Date();
-    start.setHours(0, 0, 0, 0);
-    return tasks
-      .filter(t => t.deadline && t.status !== 'Completed' && new Date(t.deadline) >= start)
-      .sort((a, b) => new Date(a.deadline!).getTime() - new Date(b.deadline!).getTime())
-      .slice(0, 10);
-  }, [tasks]);
 
   const cycleStatus = async (t: TaskItem) => {
     if (!user) return;
@@ -82,31 +133,35 @@ export default function HomePage() {
     load();
   };
 
+  const saveTask = async (data: CreateTaskDto & { assigneeIds: number[]; subtaskNames: string[] }) => {
+    if (!editingTask || !user) return;
+    const { assigneeIds: ids, subtaskNames: subs, ...rest } = data;
+    await updateTask(editingTask.id, { ...rest, assigneeIds: undefined, subtaskNames: undefined }, user.id);
+    await assignTask(editingTask.id, ids, user.id);
+    setEditingTask(null);
+    load();
+  };
+
+  const saveLink = async () => {
+    if (!linkEdit) return;
+    const trimmed = urlDraft.trim();
+    await updateProjectSettings(
+      linkEdit === 'website' ? { websiteUrl: trimmed || undefined } : { githubUrl: trimmed || undefined },
+    );
+    setSettings(await getProjectSettings());
+    setLinkEdit(null);
+  };
+
   return (
     <div className="page">
       <header className="page-title-block">
         <div>
           <h1 className="page-title">Dashboard</h1>
-          <p className="page-subtitle">Overview of your project</p>
+          <p className="page-subtitle">Your project at a glance</p>
         </div>
-        {(settings?.websiteUrl || settings?.githubUrl) && (
-          <div className="page-title-links">
-            {settings?.websiteUrl && (
-              <a href={settings.websiteUrl} target="_blank" rel="noreferrer">
-                Website
-              </a>
-            )}
-            {settings?.websiteUrl && settings?.githubUrl && <span className="page-title-links-sep">·</span>}
-            {settings?.githubUrl && (
-              <a href={settings.githubUrl} target="_blank" rel="noreferrer">
-                GitHub
-              </a>
-            )}
-          </div>
-        )}
       </header>
 
-      <section className="stat-strip" aria-label="Task statistics">
+      <section className="stat-strip stat-strip--home" aria-label="Summary and project links">
         <div className="stat-item">
           <span className="stat-item-value">{stats.pct}%</span>
           <span className="stat-item-label">Complete</span>
@@ -119,56 +174,58 @@ export default function HomePage() {
           <span className="stat-item-value">{stats.inProgress}</span>
           <span className="stat-item-label">In progress</span>
         </div>
-        <div className="stat-item stat-item--alert">
-          <span className="stat-item-value">{stats.overdue}</span>
-          <span className="stat-item-label">Overdue</span>
-        </div>
-        <div className="stat-item">
-          <span className="stat-item-value">{stats.total}</span>
-          <span className="stat-item-label">Total</span>
-        </div>
+        <StatLinkCard kind="website" url={settings?.websiteUrl} onEdit={setLinkEdit} />
+        <StatLinkCard kind="github" url={settings?.githubUrl} onEdit={setLinkEdit} />
       </section>
 
-      <section className="panel panel--focus">
-        <h2 className="panel-heading">My tasks</h2>
-        {mine.length === 0 ? (
-          <p className="panel-empty">No tasks assigned to you.</p>
-        ) : (
-          <ul className="home-task-list">
-            {mine.map(t => {
-              const overdue = t.deadline && t.status !== 'Completed' && new Date(t.deadline) < new Date();
-              return (
-                <li key={t.id} className={`home-task-row${overdue ? ' home-task-row--overdue' : ''}`}>
-                  <div className="home-task-main">
-                    <span className="home-task-name">{t.name}</span>
-                    <span className={`home-task-status home-task-status--${t.status}`}>{statusShort(t.status)}</span>
-                  </div>
-                  <div className="home-task-meta">
-                    {t.deadline && (
-                      <span className={overdue ? 'text-danger' : 'text-muted'}>
-                        {formatDay(t.deadline)}
-                        {isToday(t.deadline) && ' · today'}
-                      </span>
-                    )}
-                    <div className="home-task-avatars">
-                      {t.assignments.map(a => {
-                        const m = members.find(x => x.id === a.groupMemberId);
-                        return m ? <UserAvatar key={a.id} member={m} size="sm" /> : null;
-                      })}
-                    </div>
-                  </div>
-                  <button type="button" className="btn btn-sm btn-secondary" onClick={() => cycleStatus(t)}>
-                    Mark: {t.status === 'Completed' ? 'reopen' : t.status === 'NotStarted' ? 'start' : 'done'}
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
-        )}
-      </section>
+      <div className="home-dashboard-split">
+        <section className="panel panel--focus home-my-tasks-panel">
+          <h2 className="panel-heading">My tasks</h2>
+          {mineSorted.length === 0 ? (
+            <p className="panel-empty">No tasks assigned to you.</p>
+          ) : (
+            <ul className="home-task-list">
+              {mineSorted.map(t => {
+                const overdue = t.deadline && t.status !== 'Completed' && new Date(t.deadline) < new Date();
+                const done = t.status === 'Completed';
+                const cycleClass =
+                  t.status === 'Completed' ? 'done' : t.status === 'InProgress' ? 'progress' : 'todo';
+                return (
+                  <li
+                    key={t.id}
+                    className={`home-task-row${overdue ? ' home-task-row--overdue' : ''}${done ? ' home-task-row--completed' : ''}`}
+                  >
+                    <button
+                      type="button"
+                      className={`home-status-cycle home-status-cycle--${cycleClass}`}
+                      onClick={e => {
+                        e.stopPropagation();
+                        void cycleStatus(t);
+                      }}
+                      aria-label={`Cycle status (currently ${t.status})`}
+                      title="To do → In progress → Done"
+                    />
+                    <button type="button" className="home-task-row-hit" onClick={() => setEditingTask(t)}>
+                      <div className="home-task-main">
+                        <span className="home-task-name">{t.name}</span>
+                      </div>
+                      <div className="home-task-meta">
+                        {t.deadline && (
+                          <span className={overdue ? 'text-danger' : 'text-muted'}>
+                            {formatDay(t.deadline)}
+                            {isToday(t.deadline) && ' · today'}
+                          </span>
+                        )}
+                      </div>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </section>
 
-      <div className="panel-grid-2">
-        <section className="panel">
+        <section className="panel home-updates-panel">
           <h2 className="panel-heading">Recent updates</h2>
           {updates.length === 0 ? (
             <p className="panel-empty">No activity yet.</p>
@@ -192,44 +249,40 @@ export default function HomePage() {
             </ul>
           )}
         </section>
-
-        <section className="panel">
-          <h2 className="panel-heading">Upcoming deadlines</h2>
-          {upcomingDeadlines.length === 0 ? (
-            <p className="panel-empty">No upcoming deadlines.</p>
-          ) : (
-            <ul className="deadline-list">
-              {upcomingDeadlines.map(t => (
-                <li key={t.id} className="deadline-list-item">
-                  <div>
-                    <span className="deadline-list-title">{t.name}</span>
-                    {t.sprintNumber != null && (
-                      <span className="text-muted text-xs"> Sprint {t.sprintNumber}</span>
-                    )}
-                  </div>
-                  <time className={isToday(t.deadline) ? 'deadline-list-date deadline-list-date--soon' : 'deadline-list-date'}>
-                    {t.deadline && formatDay(t.deadline)}
-                  </time>
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
       </div>
 
-      {links.length > 0 && (
-        <section className="panel panel--compact">
-          <h2 className="panel-heading">Quick links</h2>
-          <ul className="quick-links-inline">
-            {links.slice(0, 8).map(l => (
-              <li key={l.id}>
-                <a href={l.url} target="_blank" rel="noreferrer">
-                  {l.title}
-                </a>
-              </li>
-            ))}
-          </ul>
-        </section>
+      {editingTask && (
+        <TaskFormModal task={editingTask} members={members} onSave={saveTask} onClose={() => setEditingTask(null)} />
+      )}
+
+      {linkEdit && (
+        <div className="modal-overlay" onClick={() => setLinkEdit(null)}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <span className="modal-title">{linkEdit === 'website' ? 'Website URL' : 'GitHub URL'}</span>
+              <button type="button" className="btn btn-ghost btn-sm" onClick={() => setLinkEdit(null)}>
+                Close
+              </button>
+            </div>
+            <div className="modal-body">
+              <p className="text-muted text-sm mb-2">Paste a full URL (https://…). Leave empty to clear.</p>
+              <input
+                value={urlDraft}
+                onChange={e => setUrlDraft(e.target.value)}
+                placeholder={linkEdit === 'website' ? 'https://your-project.site' : 'https://github.com/org/repo'}
+                autoFocus
+              />
+            </div>
+            <div className="modal-footer">
+              <button type="button" className="btn btn-secondary" onClick={() => setLinkEdit(null)}>
+                Cancel
+              </button>
+              <button type="button" className="btn btn-primary" onClick={() => void saveLink()}>
+                Save
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
