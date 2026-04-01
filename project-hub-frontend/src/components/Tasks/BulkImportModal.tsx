@@ -105,8 +105,10 @@ export default function BulkImportModal({ currentMember, onClose, onImported }: 
     <div className="modal-overlay">
       <div className="modal modal-lg">
         <div className="modal-header">
-          <span className="modal-title">⚡ Bulk Import Tasks via AI</span>
-          <button className="btn btn-ghost btn-sm" onClick={onClose}>✕</button>
+          <span className="modal-title">Bulk import tasks via AI</span>
+          <button type="button" className="btn btn-ghost btn-sm" onClick={onClose}>
+            Close
+          </button>
         </div>
 
         <div className="modal-body">
@@ -136,7 +138,7 @@ export default function BulkImportModal({ currentMember, onClose, onImported }: 
               </div>
               <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
                 <button className="btn btn-secondary btn-sm" onClick={() => navigator.clipboard.writeText(AI_PROMPT)}>
-                  📋 Copy Prompt
+                  Copy prompt
                 </button>
               </div>
               <div className="divider" />

@@ -10,6 +10,8 @@ import Avatar from '../components/common/Avatar';
 import MemberSelector from '../components/common/MemberSelector';
 import ConfirmDialog from '../components/common/ConfirmDialog';
 import BulkImportModal from '../components/Tasks/BulkImportModal';
+import PlanningPokerModal from '../components/games/PlanningPokerModal';
+import PickTasksModal from '../components/games/PickTasksModal';
 
 interface Props {
   currentMember: GroupMember | null;
@@ -20,6 +22,7 @@ type FilterView = 'all' | 'mine' | 'incomplete' | 'completed';
 type SortKey = 'deadline' | 'priority' | 'name' | 'updated';
 
 const PRIORITIES: TaskPriority[] = ['High', 'Medium', 'Low'];
+const CATEGORIES: TaskCategory[] = ['ProductBacklog', 'SprintGoal', 'SprintBacklog', 'Other'];
 
 function formatDeadline(d?: string) {
   if (!d) return null;
@@ -34,8 +37,6 @@ function isOverdue(deadline?: string, status?: TaskStatus) {
 function priorityOrder(p: TaskPriority) { return p === 'High' ? 0 : p === 'Medium' ? 1 : 2; }
 
 // ── Task Form Modal ──────────────────────────────────────────────────────────
-
-const CATEGORIES: TaskCategory[] = ['ProductBacklog', 'SprintGoal', 'SprintBacklog', 'Other'];
 
 interface TaskFormProps {
   task?: TaskItem;
@@ -73,7 +74,9 @@ function TaskFormModal({ task, members, onSave, onClose }: TaskFormProps) {
       <div className="modal modal-lg">
         <div className="modal-header">
           <span className="modal-title">{task ? 'Edit Task' : 'New Task'}</span>
-          <button className="btn btn-ghost btn-sm" onClick={onClose}>✕</button>
+          <button type="button" className="btn btn-ghost btn-sm" onClick={onClose}>
+            Close
+          </button>
         </div>
         <div className="modal-body">
           <div className="form-row">
@@ -157,7 +160,9 @@ function TaskFormModal({ task, members, onSave, onClose }: TaskFormProps) {
               {subtaskNames.map((s, i) => (
                 <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <span style={{ flex: 1, fontSize: 13 }}>• {s}</span>
-                  <button className="btn btn-ghost btn-xs" onClick={() => setSubtaskNames(subtaskNames.filter((_, j) => j !== i))}>✕</button>
+                  <button type="button" className="btn btn-ghost btn-xs" onClick={() => setSubtaskNames(subtaskNames.filter((_, j) => j !== i))}>
+                    Remove
+                  </button>
                 </div>
               ))}
             </div>
@@ -246,11 +251,12 @@ function TaskCard({ task, currentMember, onEdit, onDelete, onStatusChange, onSub
           <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', fontSize: 12, color: 'var(--text-muted)', marginBottom: 8 }}>
             {task.deadline && (
               <span style={{ color: overdue ? 'var(--danger)' : 'var(--text-muted)', fontWeight: overdue ? 600 : 400 }}>
-                📅 {formatDeadline(task.deadline)} {overdue && '(overdue)'}
+                Due {formatDeadline(task.deadline)}
+                {overdue && ' (overdue)'}
               </span>
             )}
-            {task.estimatedTime && <span>⏱ {task.estimatedTime}</span>}
-            {task.tags && <span>🏷 {task.tags}</span>}
+            {task.estimatedTime && <span>Est. {task.estimatedTime}</span>}
+            {task.tags && <span>Tags: {task.tags}</span>}
           </div>
 
           {/* Assignments */}
@@ -297,7 +303,9 @@ function TaskCard({ task, currentMember, onEdit, onDelete, onStatusChange, onSub
                   <span style={{ fontSize: 13, textDecoration: s.isCompleted ? 'line-through' : 'none', color: s.isCompleted ? 'var(--text-muted)' : 'var(--text)', flex: 1 }}>
                     {s.name}
                   </span>
-                  <button className="btn btn-ghost btn-xs" onClick={() => onSubtaskDelete(s.id)}>✕</button>
+                  <button type="button" className="btn btn-ghost btn-xs" onClick={() => onSubtaskDelete(s.id)}>
+                    Remove
+                  </button>
                 </div>
               ))}
               {/* Add subtask inline */}
@@ -357,6 +365,12 @@ export default function TasksPage({ currentMember, members }: Props) {
   const [editingTask, setEditingTask] = useState<TaskItem | null | 'new'>(null);
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [showBulkImport, setShowBulkImport] = useState(false);
+  const [showPoker, setShowPoker] = useState(false);
+  const [showPick, setShowPick] = useState(false);
+  const [filterStatus, setFilterStatus] = useState<TaskStatus | ''>('');
+  const [filterSprint, setFilterSprint] = useState<number | ''>('');
+  const [filterCategory, setFilterCategory] = useState<TaskCategory | ''>('');
+  const [filterAssignee, setFilterAssignee] = useState<number | ''>('');
 
   const load = () => getTasks().then(setTasks);
   useEffect(() => { load(); }, []);
@@ -384,7 +398,18 @@ export default function TasksPage({ currentMember, members }: Props) {
       return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
     });
     return list;
-  }, [tasks, view, sortKey, search, filterPriority, currentMember]);
+  }, [
+    tasks,
+    view,
+    sortKey,
+    search,
+    filterPriority,
+    filterStatus,
+    filterSprint,
+    filterCategory,
+    filterAssignee,
+    currentMember,
+  ]);
 
   const handleSave = async (data: CreateTaskDto & { assigneeIds: number[]; subtaskNames: string[] }) => {
     const { assigneeIds: ids, subtaskNames: subs, ...rest } = data;
@@ -399,19 +424,32 @@ export default function TasksPage({ currentMember, members }: Props) {
   };
 
   return (
-    <div>
-      <div className="top-bar">
-        <span className="top-bar-title">Tasks</span>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <button className="btn btn-secondary btn-sm" onClick={() => setShowBulkImport(true)}>⚡ Bulk Import</button>
-          <button className="btn btn-primary btn-sm" onClick={() => setEditingTask('new')}>+ New Task</button>
+    <div className="page-stack">
+      <header className="page-header flex-between flex-wrap gap-3">
+        <div>
+          <h1>Tasks</h1>
+          <p className="page-lead mb-0">Backlog, assignments, planning poker, and pick sessions</p>
         </div>
-      </div>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <button type="button" className="btn btn-secondary btn-sm" onClick={() => setShowPoker(true)}>
+            Planning poker
+          </button>
+          <button type="button" className="btn btn-secondary btn-sm" onClick={() => setShowPick(true)}>
+            Pick tasks
+          </button>
+          <button type="button" className="btn btn-secondary btn-sm" onClick={() => setShowBulkImport(true)}>
+            Bulk import
+          </button>
+          <button type="button" className="btn btn-primary btn-sm" onClick={() => setEditingTask('new')}>
+            New task
+          </button>
+        </div>
+      </header>
 
-      <div className="page-body">
+      <div className="page-body" style={{ padding: 0 }}>
 
         {/* ── Filters & search ── */}
-        <div className="card" style={{ marginBottom: 16 }}>
+        <div className="card-section">
           <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
             <input
               value={search}
@@ -423,6 +461,7 @@ export default function TasksPage({ currentMember, members }: Props) {
               {(['all', 'mine', 'incomplete', 'completed'] as FilterView[]).map(v => (
                 <button
                   key={v}
+                  type="button"
                   className={`btn btn-sm ${view === v ? 'btn-primary' : 'btn-secondary'}`}
                   onClick={() => setView(v)}
                 >
@@ -431,12 +470,58 @@ export default function TasksPage({ currentMember, members }: Props) {
               ))}
             </div>
             <select
+              value={filterStatus}
+              onChange={e => setFilterStatus(e.target.value as TaskStatus | '')}
+              style={{ width: 'auto' }}
+            >
+              <option value="">All statuses</option>
+              <option value="NotStarted">Not started</option>
+              <option value="InProgress">In progress</option>
+              <option value="Completed">Completed</option>
+            </select>
+            <input
+              type="number"
+              min={0}
+              placeholder="Sprint #"
+              value={filterSprint === '' ? '' : String(filterSprint)}
+              onChange={e => setFilterSprint(e.target.value === '' ? '' : Number(e.target.value))}
+              style={{ maxWidth: 100 }}
+            />
+            <select
+              value={filterCategory}
+              onChange={e => setFilterCategory(e.target.value as TaskCategory | '')}
+              style={{ width: 'auto' }}
+            >
+              <option value="">All categories</option>
+              {CATEGORIES.map(c => (
+                <option key={c} value={c}>
+                  {c.replace(/([A-Z])/g, ' $1').trim()}
+                </option>
+              ))}
+            </select>
+            <select
+              value={filterAssignee === '' ? '' : String(filterAssignee)}
+              onChange={e => setFilterAssignee(e.target.value === '' ? '' : Number(e.target.value))}
+              style={{ width: 'auto', minWidth: 120 }}
+            >
+              <option value="">Any assignee</option>
+              {members.map(m => (
+                <option key={m.id} value={m.id}>
+                  {m.name}
+                </option>
+              ))}
+            </select>
+            <select
               value={filterPriority}
               onChange={e => setFilterPriority(e.target.value as TaskPriority | '')}
               style={{ width: 'auto' }}
             >
-              <option value="">All Priorities</option>
-              {PRIORITIES.map(p => <option key={p} value={p}>{p}</option>)}
+              <option value="">All priorities</option>
+              {PRIORITIES.map(p => (
+                <option key={p} value={p}>
+                  {p}
+                </option>
+              ))}
             </select>
             <select
               value={sortKey}
@@ -457,10 +542,11 @@ export default function TasksPage({ currentMember, members }: Props) {
         {/* ── Task list ── */}
         {visible.length === 0 ? (
           <div className="empty-state">
-            <div className="empty-icon">📋</div>
-            <div className="empty-title">No tasks here yet</div>
-            <div>Create your first task to get started.</div>
-            <button className="btn btn-primary mt-2" onClick={() => setEditingTask('new')}>+ New Task</button>
+            <div className="empty-title">No tasks match</div>
+            <div>Try clearing filters or create a task.</div>
+            <button type="button" className="btn btn-primary mt-2" onClick={() => setEditingTask('new')}>
+              New task
+            </button>
           </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -523,9 +609,27 @@ export default function TasksPage({ currentMember, members }: Props) {
         <BulkImportModal
           currentMember={currentMember}
           onClose={() => setShowBulkImport(false)}
-          onImported={() => { setShowBulkImport(false); load(); }}
+          onImported={() => {
+            setShowBulkImport(false);
+            load();
+          }}
         />
       )}
+      <PlanningPokerModal
+        open={showPoker}
+        onClose={() => setShowPoker(false)}
+        tasks={tasks}
+        members={members}
+        currentMemberId={currentMember?.id ?? null}
+        onTasksChanged={load}
+      />
+      <PickTasksModal
+        open={showPick}
+        onClose={() => setShowPick(false)}
+        tasks={tasks}
+        members={members}
+        currentMemberId={currentMember?.id ?? null}
+      />
     </div>
   );
 }
