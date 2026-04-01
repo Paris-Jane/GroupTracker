@@ -1,14 +1,21 @@
-// ── Enums ─────────────────────────────────────────────────────────────────
-
-export type TaskStatus = 'NotStarted' | 'WorkingOnIt' | 'Completed';
+export type TaskStatus = 'NotStarted' | 'InProgress' | 'Completed';
 export type TaskPriority = 'Low' | 'Medium' | 'High';
-export type ResourceType = 'TeacherProvided' | 'Other';
+export type TaskCategory = 'ProductBacklog' | 'SprintGoal' | 'SprintBacklog' | 'Other';
 
-// ── Entities ───────────────────────────────────────────────────────────────
+export type ResourceSection =
+  | 'QuickLink'
+  | 'ProjectResource'
+  | 'Other'
+  | 'ClassLink';
+
+export type ClassLinkCategory = 'PM401' | 'Hilton413' | 'Cyber414' | 'MLR455';
+
+export type ScheduleCategory = 'Room' | 'Meeting' | 'Unavailable' | 'Other';
 
 export interface GroupMember {
   id: number;
   name: string;
+  username?: string;
   email?: string;
   avatarInitial?: string;
   color?: string;
@@ -33,13 +40,22 @@ export interface TaskAssignment {
 export interface TaskItem {
   id: number;
   name: string;
-  description?: string;
+  notes?: string;
   estimatedTime?: string;
   deadline?: string;
   priority: TaskPriority;
   isRequired: boolean;
   status: TaskStatus;
   tags?: string;
+  sprintNumber?: number;
+  category: TaskCategory;
+  evaluation?: number;
+  definitionOfDone?: string;
+  acceptedByPO: boolean;
+  isBlocked: boolean;
+  blockedReason?: string;
+  lastEditedByMemberId?: number;
+  lastEditedByName?: string;
   createdAt: string;
   updatedAt: string;
   subtasks: SubtaskItem[];
@@ -56,11 +72,12 @@ export interface QuickLink {
   updatedAt: string;
 }
 
-export interface ResourceItem {
+export interface ResourceItemRow {
   id: number;
   title: string;
   description?: string;
-  type: ResourceType;
+  section: ResourceSection;
+  classCategory?: ClassLinkCategory;
   category?: string;
   url?: string;
   notes?: string;
@@ -68,14 +85,34 @@ export interface ResourceItem {
   updatedAt: string;
 }
 
-export interface RoomReservation {
+export interface LoginItem {
   id: number;
-  roomName: string;
+  label: string;
+  username: string;
+  password: string;
+  url?: string;
+  notes?: string;
+  sortOrder: number;
+}
+
+export interface TextNote {
+  id: number;
+  title: string;
+  body: string;
+  updatedAt: string;
+}
+
+export interface ScheduleItem {
+  id: number;
+  title: string;
+  category: ScheduleCategory;
   date: string;
   startTime: string;
   endTime: string;
-  groupMemberId?: number;
-  reservedBy: string;
+  ownerMemberId?: number;
+  ownerName?: string;
+  ownerColor?: string;
+  location?: string;
   notes?: string;
   createdAt: string;
 }
@@ -87,6 +124,7 @@ export interface TaskUpdate {
   groupMemberId?: number;
   memberName?: string;
   memberColor?: string;
+  memberAvatarInitial?: string;
   actionType: string;
   message: string;
   createdAt: string;
@@ -107,26 +145,58 @@ export interface TaskRatingSummary {
   ratings: TaskRating[];
   highestScoringMemberId?: number;
   highestScoringMemberName?: string;
-  currentAssigneeId?: number;
+  currentAssigneeIds: number[];
 }
 
-// ── Form DTOs ──────────────────────────────────────────────────────────────
+export interface ProjectSettings {
+  productGoal: string;
+  websiteUrl?: string;
+  githubUrl?: string;
+  activePokerSessionId?: number;
+  activePickSessionId?: number;
+}
+
+export interface SprintGoal {
+  sprintNumber: number;
+  goal: string;
+  sprintDueDate?: string;
+}
+
+export interface SprintReview {
+  id: number;
+  sprintNumber: number;
+  groupMemberId: number;
+  memberName: string;
+  memberColor?: string;
+  memberAvatarInitial?: string;
+  content: string;
+  createdAt: string;
+}
 
 export interface CreateTaskDto {
   name: string;
-  description?: string;
+  notes?: string;
   estimatedTime?: string;
   deadline?: string;
   priority: TaskPriority;
   isRequired: boolean;
   status: TaskStatus;
   tags?: string;
+  sprintNumber?: number;
+  category: TaskCategory;
+  evaluation?: number;
+  definitionOfDone?: string;
+  acceptedByPO?: boolean;
+  isBlocked?: boolean;
+  blockedReason?: string;
   assigneeIds?: number[];
   subtaskNames?: string[];
 }
 
 export interface BulkImportTaskDto {
   name: string;
+  notes?: string;
+  /** Legacy field from older AI prompts; treated as notes on import */
   description?: string;
   estimatedTime?: string;
   deadline?: string;
@@ -134,6 +204,13 @@ export interface BulkImportTaskDto {
   isRequired: boolean;
   status: TaskStatus;
   tags?: string;
+  sprintNumber?: number;
+  category?: TaskCategory;
   subtaskNames?: string[];
   assigneeNames?: string[];
 }
+
+export const SCHEDULE_WEEK_START = '2026-04-06';
+export const SCHEDULE_WEEK_END = '2026-04-10';
+
+export const POKER_DECK = [0, 1, 2, 3, 5, 8, 13] as const;

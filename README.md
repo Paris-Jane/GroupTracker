@@ -17,6 +17,7 @@ A web app to help a student group organize tasks, resources, and workload.
 
 ```
 intex2/
+├── vercel.json              ← optional: monorepo build from repo root
 └── project-hub-frontend/
     ├── supabase/migrations/   ← SQL schema for Supabase
     ├── src/
@@ -53,14 +54,23 @@ npm run dev
 
 Open **http://localhost:5173**.
 
-### Deploy (Vercel)
+### Deploy (Vercel + Supabase)
 
-1. Add env vars `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` (Production + Preview).
-2. **Either:**
-   - Leave **Root Directory** empty (repo root). The root `vercel.json` builds `project-hub-frontend` and uses `project-hub-frontend/dist`, **or**
-   - Set **Root Directory** to `project-hub-frontend` and clear any custom **Output Directory** in the dashboard so it stays `dist` (uses `project-hub-frontend/vercel.json`).
+This app is a **static Vite build** that talks to **Supabase from the browser** using the anon key. There is no server-side API in this repo.
 
-Do not set Root Directory to the repo root *and* leave Output Directory as `dist` only — that looks for `./dist` at the repo root and yields a 404.
+1. **Environment variables (required)**  
+   In Vercel → **Settings → Environment Variables**, add for **Production** (and **Preview** if you use previews):
+   - `VITE_SUPABASE_URL` — Supabase **Project URL** (Project Settings → API)
+   - `VITE_SUPABASE_ANON_KEY` — **anon public** key (same page)  
+   `VITE_*` variables are embedded at **build time**. After adding or changing them, **redeploy** so the new build picks them up.
+
+2. **Project layout** — **Either:**
+   - Leave **Root Directory** empty (repository root). The root `vercel.json` installs/builds inside `project-hub-frontend` and sets **Output Directory** to `project-hub-frontend/dist`, **or**
+   - Set **Root Directory** to `project-hub-frontend` and do not override output (uses `dist` via `project-hub-frontend/vercel.json`).
+
+Do not point **Root Directory** at the repo root while **Output Directory** is only `dist` — that expects `./dist` at the repo root and causes a **404**.
+
+3. **Supabase** — Run the SQL migration in your Supabase project once. The hosted app uses the same database as local dev when env vars match that project.
 
 ---
 

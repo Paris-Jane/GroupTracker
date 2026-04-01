@@ -6,6 +6,8 @@ import DashboardPage from './pages/DashboardPage';
 import TasksPage from './pages/TasksPage';
 import ResourcesPage from './pages/ResourcesPage';
 import PlayGamePage from './pages/PlayGamePage';
+import SupabaseConfigMissing from './components/SupabaseConfigMissing';
+import { isSupabaseConfigured } from './lib/supabaseConfig';
 import './index.css';
 
 export default function App() {
@@ -13,11 +15,16 @@ export default function App() {
   const [currentMember, setCurrentMember] = useState<GroupMember | null>(null);
 
   useEffect(() => {
+    if (!isSupabaseConfigured) return;
     getMembers().then(data => {
       setMembers(data);
       if (data.length > 0) setCurrentMember(data[0]);
     });
   }, []);
+
+  if (import.meta.env.PROD && !isSupabaseConfigured) {
+    return <SupabaseConfigMissing />;
+  }
 
   return (
     <BrowserRouter>

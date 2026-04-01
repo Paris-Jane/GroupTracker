@@ -4,7 +4,7 @@ import {
   updateTaskStatus, assignTask,
   createSubtask, updateSubtask, deleteSubtask,
 } from '../api/client';
-import type { TaskItem, GroupMember, TaskStatus, TaskPriority, SubtaskItem } from '../types';
+import type { TaskItem, GroupMember, TaskStatus, TaskPriority, SubtaskItem, TaskCategory, CreateTaskDto } from '../types';
 import { StatusBadge, PriorityBadge, RequiredBadge } from '../components/common/StatusBadge';
 import Avatar from '../components/common/Avatar';
 import MemberSelector from '../components/common/MemberSelector';
@@ -26,7 +26,7 @@ function formatDeadline(d?: string) {
   return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
-function isOverdue(deadline?: string, status?: string) {
+function isOverdue(deadline?: string, status?: TaskStatus) {
   if (!deadline || status === 'Completed') return false;
   return new Date(deadline) < new Date();
 }
@@ -35,26 +35,28 @@ function priorityOrder(p: TaskPriority) { return p === 'High' ? 0 : p === 'Mediu
 
 // ── Task Form Modal ──────────────────────────────────────────────────────────
 
+const CATEGORIES: TaskCategory[] = ['ProductBacklog', 'SprintGoal', 'SprintBacklog', 'Other'];
+
 interface TaskFormProps {
   task?: TaskItem;
   members: GroupMember[];
-  onSave: (data: {
-    name: string; description: string; estimatedTime: string; deadline: string;
-    priority: TaskPriority; isRequired: boolean; status: TaskStatus; tags: string;
-    assigneeIds: number[]; subtaskNames: string[];
-  }) => void;
+  onSave: (data: CreateTaskDto & { assigneeIds: number[]; subtaskNames: string[] }) => void;
   onClose: () => void;
 }
 
 function TaskFormModal({ task, members, onSave, onClose }: TaskFormProps) {
   const [name, setName] = useState(task?.name ?? '');
-  const [description, setDescription] = useState(task?.description ?? '');
+  const [notes, setNotes] = useState(task?.notes ?? '');
   const [estimatedTime, setEstimatedTime] = useState(task?.estimatedTime ?? '');
   const [deadline, setDeadline] = useState(task?.deadline ? task.deadline.split('T')[0] : '');
   const [priority, setPriority] = useState<TaskPriority>(task?.priority ?? 'Medium');
   const [isRequired, setIsRequired] = useState(task?.isRequired ?? true);
   const [status, setStatus] = useState<TaskStatus>(task?.status ?? 'NotStarted');
   const [tags, setTags] = useState(task?.tags ?? '');
+  const [sprintNumber, setSprintNumber] = useState(task?.sprintNumber != null ? String(task.sprintNumber) : '');
+  const [category, setCategory] = useState<TaskCategory>(task?.category ?? 'ProductBacklog');
+  const [evaluation, setEvaluation] = useState(task?.evaluation != null ? String(task.evaluation) : '');
+  const [definitionOfDone, setDefinitionOfDone] = useState(task?.definitionOfDone ?? '');
   const [assigneeIds, setAssigneeIds] = useState<number[]>(task?.assignments.map(a => a.groupMemberId) ?? []);
   const [subtaskNames, setSubtaskNames] = useState<string[]>(task?.subtasks.map(s => s.name) ?? []);
   const [newSubtask, setNewSubtask] = useState('');
@@ -79,8 +81,8 @@ function TaskFormModal({ task, members, onSave, onClose }: TaskFormProps) {
             <input value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Write project report" />
           </div>
           <div className="form-row">
-            <label>Description / Notes</label>
-            <textarea value={description} onChange={e => setDescription(e.target.value)} placeholder="Details, context, links…" />
+            <label>Notes</label>
+            <textarea value={notes} onChange={e => setNotes(e.target.value)} placeholder="Details, context, links…" />
           </div>
           <div className="form-grid mb-3">
             <div>
@@ -103,14 +105,38 @@ function TaskFormModal({ task, members, onSave, onClose }: TaskFormProps) {
               <label>Status</label>
               <select value={status} onChange={e => setStatus(e.target.value as TaskStatus)}>
                 <option value="NotStarted">Not Started</option>
-                <option value="WorkingOnIt">Working On It</option>
+                <option value="InProgress">In Progress</option>
                 <option value="Completed">Completed</option>
               </select>
             </div>
           </div>
           <div className="form-grid mb-3">
             <div>
-              <label>Tags / Category</label>
+              <label>Sprint number</label>
+              <input type="number" min={0} value={sprintNumber} onChange={e => setSprintNumber(e.target.value)} placeholder="Optional" />
+            </div>
+            <div>
+              <label>Category</label>
+              <select value={category} onChange={e => setCategory(e.target.value as TaskCategory)}>
+                {CATEGORIES.map(c => (
+                  <option key={c} value={c}>{c.replace(/([A-Z])/g, ' $1').trim()}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+          <div className="form-grid mb-3">
+            <div>
+              <label>Evaluation (poker points)</label>
+              <input type="number" min={0} value={evaluation} onChange={e => setEvaluation(e.target.value)} placeholder="Optional" />
+            </div>
+            <div>
+              <label>Definition of done</label>
+              <input value={definitionOfDone} onChange={e => setDefinitionOfDone(e.target.value)} placeholder="When is this task done?" />
+            </div>
+          </div>
+          <div className="form-grid mb-3">
+            <div>
+              <label>Tags</label>
               <input value={tags} onChange={e => setTags(e.target.value)} placeholder="e.g. Design, Backend" />
             </div>
             <div style={{ display: 'flex', alignItems: 'center', paddingTop: 20 }}>
@@ -151,7 +177,22 @@ function TaskFormModal({ task, members, onSave, onClose }: TaskFormProps) {
           <button
             className="btn btn-primary"
             disabled={!name.trim()}
-            onClick={() => onSave({ name, description, estimatedTime, deadline, priority, isRequired, status, tags, assigneeIds, subtaskNames })}
+            onClick={() => onSave({
+              name,
+              notes,
+              estimatedTime,
+              deadline: deadline || undefined,
+              priority,
+              isRequired,
+              status,
+              tags,
+              sprintNumber: sprintNumber ? Number(sprintNumber) : undefined,
+              category,
+              evaluation: evaluation ? Number(evaluation) : undefined,
+              definitionOfDone: definitionOfDone || undefined,
+              assigneeIds,
+              subtaskNames,
+            })}
           >
             {task ? 'Save Changes' : 'Create Task'}
           </button>
@@ -198,8 +239,8 @@ function TaskCard({ task, currentMember, onEdit, onDelete, onStatusChange, onSub
             <RequiredBadge required={task.isRequired} />
           </div>
 
-          {task.description && (
-            <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 6 }}>{task.description}</p>
+          {task.notes && (
+            <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 6 }}>{task.notes}</p>
           )}
 
           <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', fontSize: 12, color: 'var(--text-muted)', marginBottom: 8 }}>
@@ -287,7 +328,7 @@ function TaskCard({ task, currentMember, onEdit, onDelete, onStatusChange, onSub
             style={{ fontSize: 12, padding: '3px 6px', width: 'auto' }}
           >
             <option value="NotStarted">Not Started</option>
-            <option value="WorkingOnIt">Working On It</option>
+                <option value="InProgress">In Progress</option>
             <option value="Completed">Completed</option>
           </select>
           <div style={{ display: 'flex', gap: 4, marginTop: 4 }}>
@@ -332,7 +373,7 @@ export default function TasksPage({ currentMember, members }: Props) {
       const q = search.toLowerCase();
       list = list.filter(t =>
         t.name.toLowerCase().includes(q) ||
-        t.description?.toLowerCase().includes(q) ||
+        t.notes?.toLowerCase().includes(q) ||
         t.tags?.toLowerCase().includes(q)
       );
     }
@@ -345,24 +386,13 @@ export default function TasksPage({ currentMember, members }: Props) {
     return list;
   }, [tasks, view, sortKey, search, filterPriority, currentMember]);
 
-  const handleSave = async (data: {
-    name: string; description: string; estimatedTime: string; deadline: string;
-    priority: TaskPriority; isRequired: boolean; status: TaskStatus; tags: string;
-    assigneeIds: number[]; subtaskNames: string[];
-  }) => {
+  const handleSave = async (data: CreateTaskDto & { assigneeIds: number[]; subtaskNames: string[] }) => {
+    const { assigneeIds: ids, subtaskNames: subs, ...rest } = data;
     if (editingTask === 'new') {
-      await createTask({
-        name: data.name, description: data.description, estimatedTime: data.estimatedTime,
-        deadline: data.deadline || undefined, priority: data.priority, isRequired: data.isRequired,
-        status: data.status, tags: data.tags, assigneeIds: data.assigneeIds, subtaskNames: data.subtaskNames,
-      }, currentMember?.id);
+      await createTask({ ...rest, assigneeIds: ids, subtaskNames: subs }, currentMember?.id);
     } else if (editingTask) {
-      await updateTask(editingTask.id, {
-        name: data.name, description: data.description, estimatedTime: data.estimatedTime,
-        deadline: data.deadline || undefined, priority: data.priority, isRequired: data.isRequired,
-        status: data.status, tags: data.tags,
-      }, currentMember?.id);
-      await assignTask(editingTask.id, data.assigneeIds, currentMember?.id);
+      await updateTask(editingTask.id, { ...rest, assigneeIds: undefined, subtaskNames: undefined }, currentMember?.id);
+      await assignTask(editingTask.id, ids, currentMember?.id);
     }
     setEditingTask(null);
     load();

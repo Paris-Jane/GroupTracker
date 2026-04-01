@@ -179,11 +179,13 @@ export default function BulkImportModal({ currentMember, onClose, onImported }: 
                       <span className={`badge badge-${t.priority?.toLowerCase()}`}>{t.priority}</span>
                       {t.isRequired ? <span className="badge badge-required">Required</span> : <span className="badge badge-optional">Optional</span>}
                     </div>
-                    {t.description && <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{t.description}</div>}
+                    {(t.notes || t.description) && (
+                      <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{t.notes ?? t.description}</div>
+                    )}
                     <div style={{ display: 'flex', gap: 12, fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>
-                      {t.estimatedTime && <span>⏱ {t.estimatedTime}</span>}
-                      {t.deadline && <span>📅 {t.deadline}</span>}
-                      {t.subtaskNames && t.subtaskNames.length > 0 && <span>📌 {t.subtaskNames.length} subtasks</span>}
+                      {t.estimatedTime && <span>Est: {t.estimatedTime}</span>}
+                      {t.deadline && <span>Due: {t.deadline}</span>}
+                      {t.subtaskNames && t.subtaskNames.length > 0 && <span>{t.subtaskNames.length} subtasks</span>}
                     </div>
                   </div>
                 ))}
