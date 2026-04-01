@@ -592,6 +592,16 @@ export async function addSprintReview(sprintNumber: number, memberId: number, co
   if (error) err(error, 'Failed to add review');
 }
 
+export async function updateSprintReview(reviewId: number, content: string): Promise<void> {
+  const { error } = await supabase.from('sprint_reviews').update({ content }).eq('id', reviewId);
+  if (error) err(error, 'Failed to update review');
+}
+
+export async function deleteSprintReview(reviewId: number): Promise<void> {
+  const { error } = await supabase.from('sprint_reviews').delete().eq('id', reviewId);
+  if (error) err(error, 'Failed to delete review');
+}
+
 // ── Schedule ────────────────────────────────────────────────────────────────
 
 function mapSchedule(r: {
