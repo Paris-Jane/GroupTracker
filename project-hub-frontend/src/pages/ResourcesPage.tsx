@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import {
   getLinks,
   createLink,
@@ -37,6 +37,11 @@ const CLASS_LABELS: Record<ClassLinkCategory, string> = {
   MLR455: '455 MLR',
 };
 
+type ManageScope =
+  | { kind: 'quick' }
+  | { kind: 'resource'; section: 'ProjectResource' | 'Other' }
+  | { kind: 'class'; cat: ClassLinkCategory };
+
 function SectionTitle({ children }: { children: React.ReactNode }) {
   return <h2 className="panel-heading">{children}</h2>;
 }
@@ -55,6 +60,7 @@ export default function ResourcesPage({}: Props) {
   const [editingResource, setEditingResource] = useState<ResourceDraft | ResourceItemRow | null>(null);
   const [editingLogin, setEditingLogin] = useState<LoginItem | 'new' | null>(null);
   const [editingNote, setEditingNote] = useState<TextNote | 'new' | null>(null);
+  const [manageScope, setManageScope] = useState<ManageScope | null>(null);
 
   const load = () => {
     getLinks().then(setLinks);
@@ -76,97 +82,113 @@ export default function ResourcesPage({}: Props) {
         <p className="page-subtitle">Links, logins, and notes</p>
       </header>
 
-      <section className="panel">
-        <div className="flex-between mb-3">
-          <SectionTitle>Quick links</SectionTitle>
-          <button type="button" className="btn btn-primary btn-sm" onClick={() => setEditingLink('new')}>
-            Add link
-          </button>
+      <div className="resources-url-row">
+        <UrlResourceCard
+          title="Quick links"
+          onAdd={() => setEditingLink('new')}
+          onManage={() => setManageScope({ kind: 'quick' })}
+        >
+          {links.length === 0 ? (
+            <p className="empty-hint text-sm">No quick links yet.</p>
+          ) : (
+            <ul className="resource-url-only-list">
+              {links.map(l => (
+                <li key={l.id} className="resource-url-only-row">
+                  {l.url ? (
+                    <a href={l.url} target="_blank" rel="noreferrer" className="resource-url-only-link">
+                      {l.url}
+                    </a>
+                  ) : (
+                    <span className="resource-url-missing">No URL</span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+        </UrlResourceCard>
+
+        <UrlResourceCard
+          title="Project resources"
+          onAdd={() => setEditingResource({ section: 'ProjectResource' })}
+          onManage={() => setManageScope({ kind: 'resource', section: 'ProjectResource' })}
+        >
+          {bySection('ProjectResource').length === 0 ? (
+            <p className="empty-hint text-sm">No entries.</p>
+          ) : (
+            <ul className="resource-url-only-list">
+              {bySection('ProjectResource').map(r => (
+                <li key={r.id} className="resource-url-only-row">
+                  {r.url ? (
+                    <a href={r.url} target="_blank" rel="noreferrer" className="resource-url-only-link">
+                      {r.url}
+                    </a>
+                  ) : (
+                    <span className="resource-url-missing">No URL</span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+        </UrlResourceCard>
+
+        <UrlResourceCard
+          title="Other"
+          onAdd={() => setEditingResource({ section: 'Other' })}
+          onManage={() => setManageScope({ kind: 'resource', section: 'Other' })}
+        >
+          {bySection('Other').length === 0 ? (
+            <p className="empty-hint text-sm">No entries.</p>
+          ) : (
+            <ul className="resource-url-only-list">
+              {bySection('Other').map(r => (
+                <li key={r.id} className="resource-url-only-row">
+                  {r.url ? (
+                    <a href={r.url} target="_blank" rel="noreferrer" className="resource-url-only-link">
+                      {r.url}
+                    </a>
+                  ) : (
+                    <span className="resource-url-missing">No URL</span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+        </UrlResourceCard>
+      </div>
+
+      <section className="panel resources-class-section">
+        <SectionTitle>Class Resources</SectionTitle>
+        <div className="resources-class-columns">
+          {(Object.keys(CLASS_LABELS) as ClassLinkCategory[]).map(cat => {
+            const items = classLinks.filter(r => r.classCategory === cat);
+            return (
+              <UrlResourceCard
+                key={cat}
+                title={CLASS_LABELS[cat]}
+                onAdd={() => setEditingResource({ section: 'ClassLink', classCategory: cat, title: '' })}
+                onManage={() => setManageScope({ kind: 'class', cat })}
+              >
+                {items.length === 0 ? (
+                  <p className="empty-hint text-sm">None yet.</p>
+                ) : (
+                  <ul className="resource-url-only-list">
+                    {items.map(r => (
+                      <li key={r.id} className="resource-url-only-row">
+                        {r.url ? (
+                          <a href={r.url} target="_blank" rel="noreferrer" className="resource-url-only-link">
+                            {r.url}
+                          </a>
+                        ) : (
+                          <span className="resource-url-missing">No URL</span>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </UrlResourceCard>
+            );
+          })}
         </div>
-        {links.length === 0 ? (
-          <p className="empty-hint">No quick links yet.</p>
-        ) : (
-          <ul className="resource-link-list">
-            {links.map(l => (
-              <li key={l.id} className="resource-link-row">
-                <a href={l.url} target="_blank" rel="noreferrer" className="resource-link-title">
-                  {l.title}
-                </a>
-                <span className="text-muted text-sm">{l.category}</span>
-                <div className="resource-actions">
-                  <button type="button" className="btn btn-ghost btn-xs" onClick={() => setEditingLink(l)}>
-                    Edit
-                  </button>
-                  <button type="button" className="btn btn-ghost btn-xs" onClick={() => deleteLink(l.id).then(load)}>
-                    Delete
-                  </button>
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
-
-      <ResourceBlock
-        title="Project resources"
-        items={bySection('ProjectResource')}
-        onAdd={() => setEditingResource({ section: 'ProjectResource' })}
-        onEdit={r => setEditingResource(r)}
-        onDelete={id => deleteResourceRow(id).then(load)}
-      />
-
-      <ResourceBlock
-        title="Other"
-        items={bySection('Other')}
-        onAdd={() => setEditingResource({ section: 'Other' })}
-        onEdit={r => setEditingResource(r)}
-        onDelete={id => deleteResourceRow(id).then(load)}
-      />
-
-      <section className="panel">
-        <div className="flex-between mb-3">
-          <SectionTitle>Class links</SectionTitle>
-          <button
-            type="button"
-            className="btn btn-primary btn-sm"
-            onClick={() => setEditingResource({ section: 'ClassLink', classCategory: 'PM401', title: '' })}
-          >
-            Add class link
-          </button>
-        </div>
-        {(Object.keys(CLASS_LABELS) as ClassLinkCategory[]).map(cat => {
-          const items = classLinks.filter(r => r.classCategory === cat);
-          return (
-            <div key={cat} className="mb-4">
-              <h3 className="subsection-title">{CLASS_LABELS[cat]}</h3>
-              {items.length === 0 ? (
-                <p className="empty-hint text-sm">None yet.</p>
-              ) : (
-                <ul className="resource-link-list">
-                  {items.map(r => (
-                    <li key={r.id} className="resource-link-row">
-                      {r.url ? (
-                        <a href={r.url} target="_blank" rel="noreferrer" className="resource-link-title">
-                          {r.title}
-                        </a>
-                      ) : (
-                        <span className="resource-link-title">{r.title}</span>
-                      )}
-                      <div className="resource-actions">
-                        <button type="button" className="btn btn-ghost btn-xs" onClick={() => setEditingResource(r)}>
-                          Edit
-                        </button>
-                        <button type="button" className="btn btn-ghost btn-xs" onClick={() => deleteResourceRow(r.id).then(load)}>
-                          Delete
-                        </button>
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-          );
-        })}
       </section>
 
       <section className="panel">
@@ -249,6 +271,56 @@ export default function ResourcesPage({}: Props) {
         )}
       </section>
 
+      {manageScope?.kind === 'quick' && (
+        <ManageListModal
+          title="Manage quick links"
+          onClose={() => setManageScope(null)}
+          rows={links.map(l => ({
+            id: l.id,
+            primary: l.url || '(no URL)',
+            onEdit: () => {
+              setManageScope(null);
+              setEditingLink(l);
+            },
+            onDelete: () => deleteLink(l.id).then(load),
+          }))}
+        />
+      )}
+
+      {manageScope?.kind === 'resource' && (
+        <ManageListModal
+          title={manageScope.section === 'ProjectResource' ? 'Manage project resources' : 'Manage other links'}
+          onClose={() => setManageScope(null)}
+          rows={bySection(manageScope.section).map(r => ({
+            id: r.id,
+            primary: r.url || '(no URL)',
+            onEdit: () => {
+              setManageScope(null);
+              setEditingResource(r);
+            },
+            onDelete: () => deleteResourceRow(r.id).then(load),
+          }))}
+        />
+      )}
+
+      {manageScope?.kind === 'class' && (
+        <ManageListModal
+          title={`Manage ${CLASS_LABELS[manageScope.cat]}`}
+          onClose={() => setManageScope(null)}
+          rows={classLinks
+            .filter(r => r.classCategory === manageScope.cat)
+            .map(r => ({
+              id: r.id,
+              primary: r.url || '(no URL)',
+              onEdit: () => {
+                setManageScope(null);
+                setEditingResource(r);
+              },
+              onDelete: () => deleteResourceRow(r.id).then(load),
+            }))}
+        />
+      )}
+
       {editingLink && (
         <LinkModal
           link={editingLink === 'new' ? null : editingLink}
@@ -306,54 +378,85 @@ export default function ResourcesPage({}: Props) {
   );
 }
 
-function ResourceBlock({
+function UrlResourceCard({
   title,
-  items,
   onAdd,
-  onEdit,
-  onDelete,
+  onManage,
+  children,
 }: {
   title: string;
-  items: ResourceItemRow[];
   onAdd: () => void;
-  onEdit: (r: ResourceItemRow) => void;
-  onDelete: (id: number) => void;
+  onManage: () => void;
+  children: ReactNode;
 }) {
   return (
-    <section className="panel">
-      <div className="flex-between mb-3">
-        <SectionTitle>{title}</SectionTitle>
-        <button type="button" className="btn btn-primary btn-sm" onClick={onAdd}>
-          Add
-        </button>
+    <div className="resource-url-card">
+      <div className="resource-url-card-head">
+        <h3 className="resource-url-card-title">{title}</h3>
+        <span className="resource-url-card-actions">
+          <button type="button" className="btn btn-ghost btn-xs" onClick={onAdd}>
+            Add
+          </button>
+          <button type="button" className="btn btn-ghost btn-xs" onClick={onManage}>
+            Manage
+          </button>
+        </span>
       </div>
-      {items.length === 0 ? (
-        <p className="empty-hint">No entries.</p>
-      ) : (
-        <ul className="resource-link-list">
-          {items.map(r => (
-            <li key={r.id} className="resource-link-row">
-              {r.url ? (
-                <a href={r.url} target="_blank" rel="noreferrer" className="resource-link-title">
-                  {r.title}
-                </a>
-              ) : (
-                <span className="resource-link-title">{r.title}</span>
-              )}
-              {r.description && <span className="text-sm text-muted">{r.description}</span>}
-              <div className="resource-actions">
-                <button type="button" className="btn btn-ghost btn-xs" onClick={() => onEdit(r)}>
-                  Edit
-                </button>
-                <button type="button" className="btn btn-ghost btn-xs" onClick={() => onDelete(r.id)}>
-                  Delete
-                </button>
-              </div>
-            </li>
-          ))}
-        </ul>
-      )}
-    </section>
+      <div className="resource-url-card-body">{children}</div>
+    </div>
+  );
+}
+
+function ManageListModal({
+  title,
+  rows,
+  onClose,
+}: {
+  title: string;
+  rows: { id: number; primary: string; onEdit: () => void; onDelete: () => Promise<void> }[];
+  onClose: () => void;
+}) {
+  return (
+    <div className="modal-overlay">
+      <div className="modal modal-lg">
+        <div className="modal-header">
+          <span className="modal-title">{title}</span>
+          <button type="button" className="btn btn-ghost btn-sm" onClick={onClose}>
+            Close
+          </button>
+        </div>
+        <div className="modal-body">
+          {rows.length === 0 ? (
+            <p className="empty-hint">Nothing to manage.</p>
+          ) : (
+            <ul className="manage-links-list">
+              {rows.map(r => (
+                <li key={r.id} className="manage-links-row">
+                  <span className="manage-links-primary">{r.primary}</span>
+                  <div className="manage-links-actions">
+                    <button type="button" className="btn btn-ghost btn-xs" onClick={r.onEdit}>
+                      Edit
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-ghost btn-xs text-danger"
+                      onClick={() => void r.onDelete()}
+                    >
+                      Delete
+                    </button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+        <div className="modal-footer">
+          <button type="button" className="btn btn-secondary" onClick={onClose}>
+            Done
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -401,7 +504,19 @@ function LinkModal({
           <button type="button" className="btn btn-secondary" onClick={onClose}>
             Cancel
           </button>
-          <button type="button" className="btn btn-primary" disabled={!title.trim() || !url.trim()} onClick={() => onSave({ title, url, category: category || undefined, notes: notes || undefined })}>
+          <button
+            type="button"
+            className="btn btn-primary"
+            disabled={!url.trim()}
+            onClick={() =>
+              onSave({
+                title: title.trim() || url.trim(),
+                url: url.trim(),
+                category: category || undefined,
+                notes: notes || undefined,
+              })
+            }
+          >
             Save
           </button>
         </div>

@@ -109,8 +109,6 @@ export default function ScrumPage({ currentMember, members }: Props) {
 
   const [detailsModalOpen, setDetailsModalOpen] = useState(false);
   const [productGoalDraft, setProductGoalDraft] = useState('');
-  const [websiteDraft, setWebsiteDraft] = useState('');
-  const [githubDraft, setGithubDraft] = useState('');
   const [sprintGoalDraft, setSprintGoalDraft] = useState('');
   const [sprintDueDraft, setSprintDueDraft] = useState('');
 
@@ -435,8 +433,8 @@ export default function ScrumPage({ currentMember, members }: Props) {
 
       {/* Section 3: Retrospective */}
       <section className="sprint-zone sprint-zone--review" aria-label="Sprint retrospective">
-        <h2 className="sprint-zone-title">Sprint retrospective</h2>
         <div className="sprint-retro-card">
+        <h2 className="sprint-zone-title sprint-retro-card-title">Sprint retrospective</h2>
         <div className="sprint-review-compose">
           <textarea
             className="sprint-review-textarea"

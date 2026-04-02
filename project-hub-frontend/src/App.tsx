@@ -9,9 +9,11 @@ import TasksPage from './pages/TasksPage';
 import ScrumPage from './pages/ScrumPage';
 import ResourcesPage from './pages/ResourcesPage';
 import SchedulePage from './pages/SchedulePage';
+import AdminPage from './pages/AdminPage';
 import UserAvatar from './components/common/UserAvatar';
 import SupabaseConfigMissing from './components/SupabaseConfigMissing';
 import { isSupabaseConfigured } from './lib/supabaseConfig';
+import { isAdminUser } from './lib/admin';
 import './index.css';
 
 function navClass({ isActive }: { isActive: boolean }) {
@@ -51,11 +53,11 @@ export default function App() {
           <NavLink to="/" end className={navClass}>
             Home
           </NavLink>
-          <NavLink to="/tasks" className={navClass}>
-            Tasks
-          </NavLink>
           <NavLink to="/scrum" className={navClass}>
             Sprint
+          </NavLink>
+          <NavLink to="/tasks" className={navClass}>
+            Tasks
           </NavLink>
           <NavLink to="/resources" className={navClass}>
             Resources
@@ -63,6 +65,11 @@ export default function App() {
           <NavLink to="/schedule" className={navClass}>
             Schedule
           </NavLink>
+          {isAdminUser(user) ? (
+            <NavLink to="/admin" className={navClass}>
+              Admin
+            </NavLink>
+          ) : null}
         </nav>
         <div className="app-user">
           <UserAvatar member={user} size="sm" />
@@ -79,6 +86,7 @@ export default function App() {
           <Route path="/scrum" element={<ScrumPage currentMember={user} members={members} />} />
           <Route path="/resources" element={<ResourcesPage currentMember={user} members={members} />} />
           <Route path="/schedule" element={<SchedulePage currentMember={user} members={members} />} />
+          <Route path="/admin" element={<AdminPage />} />
         </Routes>
       </main>
     </div>
