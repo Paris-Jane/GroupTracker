@@ -68,16 +68,17 @@ function endOfLocalDayFromIso(s: string) {
   return x.getTime();
 }
 
-function inferCurrentSprintNumber(goals: SprintGoal[], tasks: TaskItem[]): number {
+function inferCurrentSprintNumber(goals: SprintGoal[], tasks: TaskItem[], maxS: number): number {
   const taskMax = Math.max(0, ...tasks.map(t => t.sprintNumber ?? 0));
   const goalNums = goals.map(g => g.sprintNumber);
-  const floor = Math.max(1, taskMax, ...goalNums, 1);
+  const floor = Math.min(Math.max(1, taskMax, ...goalNums, 1), maxS);
 
   const withDates = [...goals].filter(g => g.sprintDueDate).sort((a, b) => a.sprintNumber - b.sprintNumber);
-  if (withDates.length === 0) return Math.max(1, taskMax || 1);
+  if (withDates.length === 0) return Math.min(Math.max(1, taskMax || 1), maxS);
 
   const today = startOfLocalDay(new Date());
   for (const g of withDates) {
+    if (g.sprintNumber > maxS) continue;
     const end = endOfLocalDayFromIso(g.sprintDueDate!);
     if (today <= end) return g.sprintNumber;
   }
@@ -86,9 +87,7 @@ function inferCurrentSprintNumber(goals: SprintGoal[], tasks: TaskItem[]): numbe
 
 type BoardCol = 'todo' | 'progress' | 'done';
 
-type CtxMenu =
-  | { kind: 'details'; clientX: number; clientY: number }
-  | { kind: 'review'; clientX: number; clientY: number; review: SprintReview };
+type CtxMenu = { kind: 'details'; clientX: number; clientY: number };
 
 function clampMenuPosition(clientX: number, clientY: number, menuW: number, menuH: number) {
   const pad = 8;
@@ -126,7 +125,11 @@ export default function ScrumPage({ currentMember, members }: Props) {
   const [deleteConfirm, setDeleteConfirm] = useState<null | { type: 'sprint' } | { type: 'task'; id: number } | { type: 'review'; id: number }>(null);
 
   const autoSprintSet = useRef(false);
-  const todayMatchSprint = useMemo(() => inferCurrentSprintNumber(sprintGoals, tasks), [sprintGoals, tasks]);
+  const configuredSprintCount = settings?.sprintCount ?? 6;
+  const todayMatchSprint = useMemo(
+    () => inferCurrentSprintNumber(sprintGoals, tasks, configuredSprintCount),
+    [sprintGoals, tasks, configuredSprintCount],
+  );
 
   const loadTasks = () => getTasks().then(setTasks);
   const loadGoals = () => getSprintGoals().then(setSprintGoals);
@@ -134,8 +137,6 @@ export default function ScrumPage({ currentMember, members }: Props) {
     getProjectSettings().then(s => {
       setSettings(s);
       setProductGoalDraft(s.productGoal);
-      setWebsiteDraft(s.websiteUrl ?? '');
-      setGithubDraft(s.githubUrl ?? '');
     });
   const loadReviews = () => getSprintReviews(sprintNum).then(setReviews);
 
@@ -149,18 +150,22 @@ export default function ScrumPage({ currentMember, members }: Props) {
     loadReviews();
   }, [sprintNum]);
 
-  const maxSprint = useMemo(() => {
-    const fromTasks = tasks.map(t => t.sprintNumber ?? 0);
-    const fromGoals = sprintGoals.map(g => g.sprintNumber);
-    return Math.max(1, ...fromTasks, ...fromGoals, 6);
-  }, [tasks, sprintGoals]);
+  const maxSprint = configuredSprintCount;
 
   useEffect(() => {
-    if (autoSprintSet.current) return;
+    if (!settings) return;
+    const m = settings.sprintCount ?? 6;
     if (tasks.length === 0 && sprintGoals.length === 0) return;
-    setSprintNum(inferCurrentSprintNumber(sprintGoals, tasks));
-    autoSprintSet.current = true;
-  }, [tasks, sprintGoals]);
+    if (!autoSprintSet.current) {
+      setSprintNum(inferCurrentSprintNumber(sprintGoals, tasks, m));
+      autoSprintSet.current = true;
+    }
+  }, [settings, tasks, sprintGoals]);
+
+  useEffect(() => {
+    const m = settings?.sprintCount ?? 6;
+    if (sprintNum > m) setSprintNum(m);
+  }, [settings?.sprintCount, sprintNum]);
 
   const currentGoal = sprintGoals.find(g => g.sprintNumber === sprintNum);
 
@@ -203,11 +208,7 @@ export default function ScrumPage({ currentMember, members }: Props) {
 
   const openDetailsModal = useCallback(() => {
     setCtxMenu(null);
-    if (settings) {
-      setProductGoalDraft(settings.productGoal);
-      setWebsiteDraft(settings.websiteUrl ?? '');
-      setGithubDraft(settings.githubUrl ?? '');
-    }
+    if (settings) setProductGoalDraft(settings.productGoal);
     setSprintGoalDraft(currentGoal?.goal ?? '');
     setSprintDueDraft(currentGoal?.sprintDueDate?.split('T')[0] ?? '');
     setDetailsModalOpen(true);
@@ -218,8 +219,6 @@ export default function ScrumPage({ currentMember, members }: Props) {
     try {
       const next = await updateProjectSettings({
         productGoal: productGoalDraft,
-        websiteUrl: websiteDraft || undefined,
-        githubUrl: githubDraft || undefined,
       });
       setSettings(next);
       await upsertSprintGoal({
@@ -272,18 +271,14 @@ export default function ScrumPage({ currentMember, members }: Props) {
 
   const productGoalText = settings?.productGoal?.trim() ?? '';
   const sprintGoalText = currentGoal?.goal?.trim() ?? '';
-  const dueLabel = formatDue(currentGoal?.sprintDueDate);
-  const dueIso = currentGoal?.sprintDueDate?.split('T')[0];
+  const adminDueRaw = settings?.sprintDeadlines?.[sprintNum - 1]?.trim();
+  const dueLabel =
+    formatDue(currentGoal?.sprintDueDate) || (adminDueRaw ? formatDue(adminDueRaw) : null);
+  const dueIso = (currentGoal?.sprintDueDate?.split('T')[0] ?? adminDueRaw) || undefined;
 
   const onDetailsContextMenu = (e: React.MouseEvent) => {
     e.preventDefault();
     setCtxMenu({ kind: 'details', clientX: e.clientX, clientY: e.clientY });
-  };
-
-  const onReviewContextMenu = (e: React.MouseEvent, r: SprintReview) => {
-    e.preventDefault();
-    if (!currentMember || r.groupMemberId !== currentMember.id) return;
-    setCtxMenu({ kind: 'review', clientX: e.clientX, clientY: e.clientY, review: r });
   };
 
   const menuPos = ctxMenu ? clampMenuPosition(ctxMenu.clientX, ctxMenu.clientY, 168, 88) : { left: 0, top: 0 };
@@ -355,6 +350,7 @@ export default function ScrumPage({ currentMember, members }: Props) {
       {/* Section 2: Board */}
       <section className="sprint-zone sprint-zone--board" aria-label="Sprint board">
         <h2 className="sprint-zone-title">Sprint board</h2>
+        <div className="sprint-board-shell">
         <div className="sprint-kanban-v3">
           {(
             [
@@ -434,11 +430,13 @@ export default function ScrumPage({ currentMember, members }: Props) {
             </div>
           ))}
         </div>
+        </div>
       </section>
 
-      {/* Section 3: Review */}
-      <section className="sprint-zone sprint-zone--review" aria-label="Sprint review">
-        <h2 className="sprint-zone-title">Sprint review</h2>
+      {/* Section 3: Retrospective */}
+      <section className="sprint-zone sprint-zone--review" aria-label="Sprint retrospective">
+        <h2 className="sprint-zone-title">Sprint retrospective</h2>
+        <div className="sprint-retro-card">
         <div className="sprint-review-compose">
           <textarea
             className="sprint-review-textarea"
@@ -465,29 +463,43 @@ export default function ScrumPage({ currentMember, members }: Props) {
           </div>
         </div>
         <ul className="sprint-review-list">
-          {reviews.map(r => (
-            <li
-              key={r.id}
-              className="sprint-review-item"
-              onContextMenu={e => onReviewContextMenu(e, r)}
-            >
-              <UserAvatar member={{ name: r.memberName, color: r.memberColor, avatarInitial: r.memberAvatarInitial }} size="sm" />
-              <div className="sprint-review-item-main">
-                <div className="sprint-review-item-line">
-                  <span className="sprint-review-item-name">{r.memberName}</span>
-                  <time className="sprint-review-item-date" dateTime={r.createdAt}>
-                    {new Date(r.createdAt).toLocaleDateString()}
-                  </time>
+          {reviews.map(r => {
+            const isOwn = currentMember?.id === r.groupMemberId;
+            return (
+              <li key={r.id} className={`sprint-review-item${isOwn ? ' is-own' : ''}`}>
+                <UserAvatar member={{ name: r.memberName, color: r.memberColor, avatarInitial: r.memberAvatarInitial }} size="sm" />
+                <div className="sprint-review-item-main">
+                  <div className="sprint-review-item-line">
+                    <span className="sprint-review-item-name">{r.memberName}</span>
+                    <time className="sprint-review-item-date" dateTime={r.createdAt}>
+                      {new Date(r.createdAt).toLocaleDateString()}
+                    </time>
+                    {isOwn ? (
+                      <span className="sprint-review-hover-actions">
+                        <button
+                          type="button"
+                          className="btn btn-ghost btn-xs"
+                          onClick={() => setEditingReview({ id: r.id, content: r.content })}
+                        >
+                          Edit
+                        </button>
+                        <button type="button" className="btn btn-ghost btn-xs text-danger" onClick={() => setDeleteConfirm({ type: 'review', id: r.id })}>
+                          Delete
+                        </button>
+                      </span>
+                    ) : null}
+                  </div>
+                  <p className="sprint-review-item-content">{r.content}</p>
                 </div>
-                <p className="sprint-review-item-content">{r.content}</p>
-              </div>
-            </li>
-          ))}
+              </li>
+            );
+          })}
         </ul>
         {reviews.length === 0 ? <p className="sprint-review-empty">No notes for this sprint yet.</p> : null}
+        </div>
       </section>
 
-      {ctxMenu?.kind === 'details' && (
+      {ctxMenu && (
         <div className="sprint-ctx-menu" style={{ left: menuPos.left, top: menuPos.top }} role="menu">
           <button type="button" className="sprint-ctx-item" role="menuitem" onClick={openDetailsModal}>
             Edit sprint details
@@ -506,35 +518,6 @@ export default function ScrumPage({ currentMember, members }: Props) {
           </button>
         </div>
       )}
-      {ctxMenu?.kind === 'review' && (
-        <div className="sprint-ctx-menu" style={{ left: menuPos.left, top: menuPos.top }} role="menu">
-          <button
-            type="button"
-            className="sprint-ctx-item"
-            role="menuitem"
-            onClick={() => {
-              const { review } = ctxMenu;
-              setCtxMenu(null);
-              setEditingReview({ id: review.id, content: review.content });
-            }}
-          >
-            Edit
-          </button>
-          <button
-            type="button"
-            className="sprint-ctx-item sprint-ctx-item--danger"
-            role="menuitem"
-            onClick={() => {
-              const id = ctxMenu.review.id;
-              setCtxMenu(null);
-              setDeleteConfirm({ type: 'review', id });
-            }}
-          >
-            Delete
-          </button>
-        </div>
-      )}
-
       {detailsModalOpen && (
         <div className="modal-overlay">
           <div className="modal modal-lg">
@@ -553,16 +536,6 @@ export default function ScrumPage({ currentMember, members }: Props) {
                   onChange={e => setProductGoalDraft(e.target.value)}
                   disabled={savingDetails}
                 />
-              </div>
-              <div className="form-grid">
-                <div className="form-row">
-                  <label>Website</label>
-                  <input value={websiteDraft} onChange={e => setWebsiteDraft(e.target.value)} disabled={savingDetails} placeholder="https://…" />
-                </div>
-                <div className="form-row">
-                  <label>GitHub</label>
-                  <input value={githubDraft} onChange={e => setGithubDraft(e.target.value)} disabled={savingDetails} placeholder="https://…" />
-                </div>
               </div>
               <div className="form-row">
                 <label>Sprint goal (this sprint)</label>

@@ -154,6 +154,26 @@ export interface ProjectSettings {
   githubUrl?: string;
   activePokerSessionId?: number;
   activePickSessionId?: number;
+  /** Configured sprint count (admin). Tabs show 1..sprintCount. */
+  sprintCount?: number;
+  /** Per-sprint deadlines YYYY-MM-DD; index 0 = sprint 1. */
+  sprintDeadlines?: string[];
+}
+
+/** Member row including password for admin UI only. */
+export interface AdminMember extends GroupMember {
+  password?: string;
+}
+
+export interface AdminBulkResetOptions {
+  tasks?: boolean;
+  quickLinks?: boolean;
+  resourceItems?: boolean;
+  sprintGoalsAndReviews?: boolean;
+  loginItems?: boolean;
+  textNotes?: boolean;
+  scheduleItems?: boolean;
+  pokerAndPickSessions?: boolean;
 }
 
 export interface SprintGoal {

@@ -444,7 +444,7 @@ function ResourceModal({
               <select value={section} onChange={e => setSection(e.target.value as ResourceSection)}>
                 <option value="ProjectResource">Project resource</option>
                 <option value="Other">Other</option>
-                <option value="ClassLink">Class link</option>
+                <option value="ClassLink">Class Resources</option>
               </select>
             </div>
           )}

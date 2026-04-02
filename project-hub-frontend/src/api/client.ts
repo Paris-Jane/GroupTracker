@@ -19,6 +19,8 @@ import type {
   ProjectSettings,
   SprintGoal,
   SprintReview,
+  AdminMember,
+  AdminBulkResetOptions,
   ResourceSection,
   ClassLinkCategory,
   ScheduleCategory,
@@ -500,6 +502,11 @@ export const deleteSubtask = async (subtaskId: number): Promise<void> => {
 
 // ── Project settings ───────────────────────────────────────────────────────
 
+function parseSprintDeadlines(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.map(x => String(x).trim().slice(0, 10)).filter(Boolean);
+}
+
 export async function getProjectSettings(): Promise<ProjectSettings> {
   const { data, error } = await supabase.from('project_settings').select('*').eq('id', 1).maybeSingle();
   if (error) err(error, 'Failed to load settings');
@@ -509,6 +516,8 @@ export async function getProjectSettings(): Promise<ProjectSettings> {
     github_url: string | null;
     active_poker_session_id: number | null;
     active_pick_session_id: number | null;
+    sprint_count: number | null;
+    sprint_deadlines: unknown;
   } | null;
   return {
     productGoal: r?.product_goal ?? '',
@@ -516,6 +525,8 @@ export async function getProjectSettings(): Promise<ProjectSettings> {
     githubUrl: r?.github_url ?? undefined,
     activePokerSessionId: r?.active_poker_session_id ?? undefined,
     activePickSessionId: r?.active_pick_session_id ?? undefined,
+    sprintCount: r?.sprint_count ?? undefined,
+    sprintDeadlines: parseSprintDeadlines(r?.sprint_deadlines),
   };
 }
 
@@ -526,9 +537,53 @@ export async function updateProjectSettings(p: Partial<ProjectSettings>): Promis
   if (p.githubUrl !== undefined) u.github_url = p.githubUrl || null;
   if (p.activePokerSessionId !== undefined) u.active_poker_session_id = p.activePokerSessionId ?? null;
   if (p.activePickSessionId !== undefined) u.active_pick_session_id = p.activePickSessionId ?? null;
+  if (p.sprintCount !== undefined) u.sprint_count = Math.max(1, Math.min(50, Number(p.sprintCount) || 1));
+  if (p.sprintDeadlines !== undefined) u.sprint_deadlines = p.sprintDeadlines;
   const { error } = await supabase.from('project_settings').update(u).eq('id', 1);
   if (error) err(error, 'Failed to save settings');
   return getProjectSettings();
+}
+
+/** Full member rows for admin UI (includes password). */
+export async function getMembersForAdmin(): Promise<AdminMember[]> {
+  const { data, error } = await supabase
+    .from('group_members')
+    .select('id,name,email,avatar_initial,color,username,password')
+    .order('id');
+  if (error) err(error, 'Failed to load members');
+  return (data as MemberRow[]).map(r => ({
+    ...mapMember(r),
+    password: r.password ?? undefined,
+  }));
+}
+
+async function deleteAllRows(table: string): Promise<void> {
+  const { error } = await supabase.from(table).delete().not('id', 'is', null);
+  if (error) err(error, `Failed to clear ${table}`);
+}
+
+/** Destructive bulk reset (admin). Order handles common FKs. */
+export async function adminBulkReset(opts: AdminBulkResetOptions): Promise<void> {
+  if (opts.pokerAndPickSessions) {
+    await deleteAllRows('pick_sessions');
+    await deleteAllRows('poker_sessions');
+    await supabase
+      .from('project_settings')
+      .update({ active_poker_session_id: null, active_pick_session_id: null })
+      .eq('id', 1);
+  }
+  if (opts.tasks) {
+    await deleteAllRows('task_items');
+  }
+  if (opts.quickLinks) await deleteAllRows('quick_links');
+  if (opts.resourceItems) await deleteAllRows('resource_items');
+  if (opts.sprintGoalsAndReviews) {
+    await deleteAllRows('sprint_reviews');
+    await deleteAllRows('sprint_goals');
+  }
+  if (opts.loginItems) await deleteAllRows('login_items');
+  if (opts.textNotes) await deleteAllRows('text_notes');
+  if (opts.scheduleItems) await deleteAllRows('schedule_items');
 }
 
 // ── Sprint goals & reviews ─────────────────────────────────────────────────
