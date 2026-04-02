@@ -347,7 +347,7 @@ export default function ScrumPage({ currentMember, members }: Props) {
 
       {/* Section 2: Board */}
       <section className="sprint-zone sprint-zone--board" aria-label="Sprint board">
-        <h2 className="sprint-zone-title">Sprint board</h2>
+        <h2 className="sprint-zone-title sprint-retro-card-title">Sprint board</h2>
         <div className="sprint-board-shell">
         <div className="sprint-kanban-v3">
           {(

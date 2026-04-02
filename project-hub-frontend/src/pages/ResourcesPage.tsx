@@ -77,10 +77,6 @@ export default function ResourcesPage({}: Props) {
 
   return (
     <div className="page">
-      <header className="page-title-block">
-        <h1 className="page-title">Resources</h1>
-        <p className="page-subtitle">Links, logins, and notes</p>
-      </header>
 
       <div className="resources-url-row">
         <UrlResourceCard

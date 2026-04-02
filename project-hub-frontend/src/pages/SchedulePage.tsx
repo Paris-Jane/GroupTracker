@@ -58,7 +58,6 @@ export default function SchedulePage({ currentMember, members }: Props) {
   return (
     <div className="page">
       <header className="page-title-block">
-        <h1 className="page-title">Schedule</h1>
         <p className="page-subtitle">
           {formatDayLabel(SCHEDULE_WEEK_START)} – {formatDayLabel(SCHEDULE_WEEK_END)}
         </p>
