@@ -14,7 +14,7 @@ import type { TaskItem, TaskUpdate, GroupMember, TaskStatus, CreateTaskDto, Spri
 import UserAvatar from '../components/common/UserAvatar';
 import TaskFormModal from '../components/Tasks/TaskFormModal';
 import { useAuth } from '../auth/AuthContext';
-import { inferCurrentSprintNumber, computeSprintDayNumber } from '../lib/sprintCurrent';
+import { inferCurrentSprintNumber } from '../lib/sprintCurrent';
 
 function fmtDate(iso?: string): string {
   if (!iso) return '';
@@ -48,16 +48,6 @@ function nextStatus(s: TaskStatus): TaskStatus {
   return 'NotStarted';
 }
 
-function linkDisplayUrl(raw?: string): string {
-  if (!raw?.trim()) return 'Click to set link';
-  try {
-    const u = raw.includes('://') ? raw : `https://${raw}`;
-    return new URL(u).hostname.replace(/^www\./, '') || raw;
-  } catch {
-    return raw.slice(0, 30) + (raw.length > 30 ? '...' : '');
-  }
-}
-
 type LinkEditKind = 'website' | 'github';
 
 function StatCard({
@@ -83,41 +73,46 @@ function StatCard({
 function HomeStatLinkCard({
   kind,
   url,
-  title,
-  subtitle,
+  heading,
+  linkLabel,
   accent,
   onEdit,
   onContextMenu,
 }: {
   kind: LinkEditKind;
   url?: string;
-  title: string;
-  subtitle: string;
+  heading: string;
+  linkLabel: string;
   accent: 'neutral' | 'primary';
   onEdit: () => void;
   onContextMenu: (e: ReactMouseEvent, k: LinkEditKind) => void;
 }) {
   const isSet = !!url?.trim();
-  const open = () => {
-    if (isSet) {
-      const href = /^https?:\/\//i.test(url!) ? url! : `https://${url}`;
-      window.open(href, '_blank', 'noopener,noreferrer');
-    } else {
-      onEdit();
-    }
-  };
+  const href = isSet ? (/^https?:\/\//i.test(url!) ? url! : `https://${url}`) : '';
+
   return (
-    <button
-      type="button"
+    <div
       className={`home-stat-link-card home-stat-link-card--${accent}${!isSet ? ' home-stat-link-card--unset' : ''}`}
-      onClick={open}
       onContextMenu={e => onContextMenu(e, kind)}
-      title={isSet ? `${title} — right-click to edit or remove` : `Set ${title}`}
+      title={isSet ? `${heading} — right-click to edit or remove` : `Set ${heading}`}
     >
-      <span className="home-stat-link-title">{title}</span>
-      <span className="home-stat-link-sub">{subtitle}</span>
-      <span className="home-stat-link-url">{linkDisplayUrl(url)}</span>
-    </button>
+      <span className="home-stat-link-heading">{heading}</span>
+      {isSet ? (
+        <a
+          href={href}
+          target="_blank"
+          rel="noreferrer"
+          className="home-stat-link-anchor"
+          onClick={e => e.stopPropagation()}
+        >
+          {linkLabel}
+        </a>
+      ) : (
+        <button type="button" className="home-stat-link-placeholder btn btn-ghost btn-sm" onClick={onEdit}>
+          Set link
+        </button>
+      )}
+    </div>
   );
 }
 
@@ -190,8 +185,6 @@ export default function HomePage() {
     () => inferCurrentSprintNumber(sprintGoals, tasks, settings?.sprintCount ?? 6),
     [sprintGoals, tasks, settings?.sprintCount],
   );
-
-  const sprintDay = useMemo(() => computeSprintDayNumber(sprintGoals, currentSprint), [sprintGoals, currentSprint]);
 
   const myTasks = useMemo(() => {
     if (!user) return [];
@@ -286,12 +279,12 @@ export default function HomePage() {
           note={`${stats.completed} of ${stats.total} done`}
         />
         <StatCard label="Completed" value={stats.completed} accent="success" />
-        <StatCard label="Sprint day" value={sprintDay} accent="warning" note={`Sprint ${currentSprint}`} />
+        <StatCard label="Sprint day" value={currentSprint} accent="warning" />
         <HomeStatLinkCard
           kind="website"
           url={settings?.websiteUrl}
-          title="Website"
-          subtitle="Project site"
+          heading="Website"
+          linkLabel="Project site"
           accent="neutral"
           onEdit={() => setLinkEdit('website')}
           onContextMenu={openLinkCtx}
@@ -299,8 +292,8 @@ export default function HomePage() {
         <HomeStatLinkCard
           kind="github"
           url={settings?.githubUrl}
-          title="GitHub"
-          subtitle="Repository"
+          heading="GitHub"
+          linkLabel="Repository"
           accent="primary"
           onEdit={() => setLinkEdit('github')}
           onContextMenu={openLinkCtx}

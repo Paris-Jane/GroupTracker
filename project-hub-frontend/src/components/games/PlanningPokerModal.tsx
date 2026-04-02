@@ -4,6 +4,7 @@ import {
   startPokerSession,
   getActivePokerSession,
   pokerMarkReady,
+  pokerStartVoting,
   pokerSubmitVote,
   pokerNextTask,
   pokerApplyEvaluation,
@@ -143,19 +144,31 @@ export default function PlanningPokerModal({
 
               {state.phase === 'ready' && (
                 <div>
-                  <p className="text-sm mb-2">When everyone is ready, voting opens automatically.</p>
-                  <p className="text-xs text-muted mb-2">Ready: {state.readyMemberIds.length} / {memberCount}</p>
-                  <button
-                    type="button"
-                    className="btn btn-primary btn-sm"
-                    disabled={!currentMemberId || busy}
-                    onClick={() =>
-                      currentMemberId &&
-                      void run(() => pokerMarkReady(state.id, currentMemberId, memberCount))
-                    }
-                  >
-                    I&apos;m ready
-                  </button>
+                  <p className="text-sm mb-2">
+                    Mark when you&apos;re ready. Anyone can press <strong>Start voting</strong> when the team is set (works with any number of players).
+                  </p>
+                  <p className="text-xs text-muted mb-2">Ready: {state.readyMemberIds.length}</p>
+                  <div className="flex gap-2 flex-wrap">
+                    <button
+                      type="button"
+                      className="btn btn-primary btn-sm"
+                      disabled={!currentMemberId || busy}
+                      onClick={() =>
+                        currentMemberId &&
+                        void run(() => pokerMarkReady(state.id, currentMemberId, memberCount))
+                      }
+                    >
+                      I&apos;m ready
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-sm"
+                      disabled={busy}
+                      onClick={() => void run(() => pokerStartVoting(state.id, memberCount))}
+                    >
+                      Start voting
+                    </button>
+                  </div>
                 </div>
               )}
 

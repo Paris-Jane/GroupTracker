@@ -2,7 +2,6 @@ import type { CSSProperties, ReactNode } from 'react';
 import type { GroupMember, TaskPriority, TaskStatus } from '../../types';
 import { resolveMemberColor } from '../../lib/memberColor';
 
-export type TasksViewTab = 'all' | 'mine' | 'open' | 'done';
 export type TasksSortKey = 'deadline' | 'priority' | 'name' | 'updated';
 
 const PRIORITIES: TaskPriority[] = ['High', 'Medium', 'Low'];
@@ -63,13 +62,6 @@ const STATUS_OPTIONS: { value: TaskStatus | ''; label: string }[] = [
   { value: 'Completed', label: 'Done' },
 ];
 
-const VIEW_LABELS: Record<TasksViewTab, string> = {
-  all: 'All',
-  mine: 'Mine',
-  open: 'Open',
-  done: 'Done',
-};
-
 const SORT_LABELS: Record<TasksSortKey, string> = {
   deadline: 'Deadline',
   priority: 'Priority',
@@ -80,8 +72,8 @@ const SORT_LABELS: Record<TasksSortKey, string> = {
 export interface TaskFiltersProps {
   search: string;
   onSearchChange: (v: string) => void;
-  view: TasksViewTab;
-  onViewChange: (v: TasksViewTab) => void;
+  filtersOpen: boolean;
+  onToggleFilters: () => void;
   filterStatus: TaskStatus | '';
   onFilterStatus: (v: TaskStatus | '') => void;
   sprintNumbers: number[];
@@ -105,8 +97,8 @@ export interface TaskFiltersProps {
 export function TaskFilters({
   search,
   onSearchChange,
-  view,
-  onViewChange,
+  filtersOpen,
+  onToggleFilters,
   filterStatus,
   onFilterStatus,
   sprintNumbers,
@@ -126,16 +118,7 @@ export function TaskFilters({
   activeSummary,
   onClearAllFilters,
 }: TaskFiltersProps) {
-  const views = (['all', 'mine', 'open', 'done'] as TasksViewTab[]).map(v => (
-    <button
-      key={v}
-      type="button"
-      className={`tasks-filter-view-btn${view === v ? ' tasks-filter-view-btn--on' : ''}`}
-      onClick={() => onViewChange(v)}
-    >
-      {VIEW_LABELS[v]}
-    </button>
-  ));
+  const filterBtnOn = filtersOpen || !!activeSummary;
 
   return (
     <div className="tasks-filter-sticky">
@@ -164,141 +147,10 @@ export function TaskFilters({
               </button>
             ) : null}
           </div>
-          <div className="tasks-filter-view-tabs" role="tablist" aria-label="Task scope">
-            {views}
-          </div>
-        </div>
-
-        {activeSummary ? (
-          <div className="tasks-filter-active-bar">
-            <span className="tasks-filter-active-text">{activeSummary}</span>
-            <button type="button" className="btn btn-ghost btn-sm tasks-filter-clear-all" onClick={onClearAllFilters}>
-              Clear all
-            </button>
-          </div>
-        ) : null}
-
-        <div className="tasks-filter-row-secondary">
-          <div className="tasks-filter-groups">
-            <div className="tasks-filter-group">
-              <span className="tasks-filter-group-label">Status</span>
-              <div className="tasks-filter-pill-row">
-                {STATUS_OPTIONS.map(({ value, label }) => (
-                  <FilterPill
-                    key={value || 'all'}
-                    selected={filterStatus === value}
-                    onClick={() => onFilterStatus(value)}
-                  >
-                    {label}
-                  </FilterPill>
-                ))}
-              </div>
-            </div>
-
-            <div className="tasks-filter-group">
-              <span className="tasks-filter-group-label">Sprint</span>
-              {useSprintDropdown ? (
-                <div className="tasks-filter-sprint-dropdown-wrap">
-                  {filterSprint !== '' ? (
-                    <span className="tasks-filter-sprint-chip">Sprint {filterSprint}</span>
-                  ) : null}
-                  <select
-                    className="select-compact tasks-filter-sprint-select"
-                    value={filterSprint === '' ? '' : String(filterSprint)}
-                    onChange={e => onFilterSprint(e.target.value === '' ? '' : Number(e.target.value))}
-                    aria-label="Filter by sprint"
-                  >
-                    <option value="">All sprints</option>
-                    {sprintNumbers.map(n => (
-                      <option key={n} value={n}>
-                        Sprint {n}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              ) : (
-                <div className="tasks-filter-pill-row">
-                  <FilterPill selected={filterSprint === ''} onClick={() => onFilterSprint('')}>
-                    All
-                  </FilterPill>
-                  {sprintNumbers.map(n => (
-                    <FilterPill key={n} selected={filterSprint === n} onClick={() => onFilterSprint(n)}>
-                      Sprint {n}
-                    </FilterPill>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            <div className="tasks-filter-group tasks-filter-group--assignees">
-              <span className="tasks-filter-group-label">Assignee</span>
-              <div className="tasks-filter-assignee-row">
-                <button
-                  type="button"
-                  className={`tasks-filter-member-chip tasks-filter-member-chip--all${filterAssigneeIds.length === 0 ? ' tasks-filter-member-chip--on' : ''}`}
-                  onClick={onClearAssignees}
-                  title="All assignees"
-                  aria-pressed={filterAssigneeIds.length === 0}
-                >
-                  <span className="tasks-filter-member-chip-inner">All</span>
-                </button>
-                {members.map(m => (
-                  <MemberAvatarChip
-                    key={m.id}
-                    member={m}
-                    selected={filterAssigneeIds.includes(m.id)}
-                    onClick={() => onToggleAssignee(m.id)}
-                  />
-                ))}
-              </div>
-            </div>
-
-            <div className="tasks-filter-group">
-              <span className="tasks-filter-group-label">Priority</span>
-              <div className="tasks-filter-pill-row">
-                <FilterPill selected={filterPriority === ''} onClick={() => onFilterPriority('')}>
-                  All
-                </FilterPill>
-                {PRIORITIES.map(p => (
-                  <FilterPill
-                    key={p}
-                    selected={filterPriority === p}
-                    onClick={() => onFilterPriority(p)}
-                    className={
-                      p === 'High'
-                        ? 'tasks-filter-pill--pri-high'
-                        : p === 'Medium'
-                          ? 'tasks-filter-pill--pri-medium'
-                          : 'tasks-filter-pill--pri-low'
-                    }
-                  >
-                    {p}
-                  </FilterPill>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          <div className="tasks-filter-meta">
-            <div className="tasks-filter-result-summary">
-              <span className="tasks-filter-result-count">
-                {taskCount} {taskCount === 1 ? 'task' : 'tasks'}
-              </span>
-              {overdueCount > 0 ? (
-                <>
-                  <span className="tasks-filter-result-sep" aria-hidden>
-                    {' '}
-                    •{' '}
-                  </span>
-                  <span className="tasks-filter-result-overdue">
-                    {overdueCount} overdue
-                  </span>
-                </>
-              ) : null}
-            </div>
-            <div className="tasks-filter-sort">
+          <div className="tasks-filter-toolbar-actions">
+            <div className="tasks-filter-sort tasks-filter-sort--inline">
               <label className="tasks-filter-sort-label" htmlFor="tasks-sort">
-                Sort:
+                Sort
               </label>
               <select
                 id="tasks-sort"
@@ -313,8 +165,150 @@ export function TaskFilters({
                 ))}
               </select>
             </div>
+            <button
+              type="button"
+              className={`tasks-filter-icon-btn${filterBtnOn ? ' tasks-filter-icon-btn--on' : ''}`}
+              onClick={onToggleFilters}
+              aria-expanded={filtersOpen}
+              aria-label={filtersOpen ? 'Hide filters' : 'Show filters'}
+              title="Filters"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+                <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" />
+              </svg>
+            </button>
           </div>
         </div>
+
+        {activeSummary ? (
+          <div className="tasks-filter-active-bar">
+            <span className="tasks-filter-active-text">{activeSummary}</span>
+            <button type="button" className="btn btn-ghost btn-sm tasks-filter-clear-all" onClick={onClearAllFilters}>
+              Clear all
+            </button>
+          </div>
+        ) : null}
+
+        {filtersOpen ? (
+          <div className="tasks-filter-row-secondary">
+            <div className="tasks-filter-groups">
+              <div className="tasks-filter-group">
+                <span className="tasks-filter-group-label">Status</span>
+                <div className="tasks-filter-pill-row">
+                  {STATUS_OPTIONS.map(({ value, label }) => (
+                    <FilterPill
+                      key={value || 'all'}
+                      selected={filterStatus === value}
+                      onClick={() => onFilterStatus(value)}
+                    >
+                      {label}
+                    </FilterPill>
+                  ))}
+                </div>
+              </div>
+
+              <div className="tasks-filter-group">
+                <span className="tasks-filter-group-label">Sprint</span>
+                {useSprintDropdown ? (
+                  <div className="tasks-filter-sprint-dropdown-wrap">
+                    {filterSprint !== '' ? (
+                      <span className="tasks-filter-sprint-chip">Sprint {filterSprint}</span>
+                    ) : null}
+                    <select
+                      className="select-compact tasks-filter-sprint-select"
+                      value={filterSprint === '' ? '' : String(filterSprint)}
+                      onChange={e => onFilterSprint(e.target.value === '' ? '' : Number(e.target.value))}
+                      aria-label="Filter by sprint"
+                    >
+                      <option value="">All sprints</option>
+                      {sprintNumbers.map(n => (
+                        <option key={n} value={n}>
+                          Sprint {n}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                ) : (
+                  <div className="tasks-filter-pill-row">
+                    <FilterPill selected={filterSprint === ''} onClick={() => onFilterSprint('')}>
+                      All
+                    </FilterPill>
+                    {sprintNumbers.map(n => (
+                      <FilterPill key={n} selected={filterSprint === n} onClick={() => onFilterSprint(n)}>
+                        Sprint {n}
+                      </FilterPill>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="tasks-filter-group tasks-filter-group--assignees">
+                <span className="tasks-filter-group-label">Assignee</span>
+                <div className="tasks-filter-assignee-row">
+                  <button
+                    type="button"
+                    className={`tasks-filter-member-chip tasks-filter-member-chip--all${filterAssigneeIds.length === 0 ? ' tasks-filter-member-chip--on' : ''}`}
+                    onClick={onClearAssignees}
+                    title="All assignees"
+                    aria-pressed={filterAssigneeIds.length === 0}
+                  >
+                    <span className="tasks-filter-member-chip-inner">All</span>
+                  </button>
+                  {members.map(m => (
+                    <MemberAvatarChip
+                      key={m.id}
+                      member={m}
+                      selected={filterAssigneeIds.includes(m.id)}
+                      onClick={() => onToggleAssignee(m.id)}
+                    />
+                  ))}
+                </div>
+              </div>
+
+              <div className="tasks-filter-group">
+                <span className="tasks-filter-group-label">Priority</span>
+                <div className="tasks-filter-pill-row">
+                  <FilterPill selected={filterPriority === ''} onClick={() => onFilterPriority('')}>
+                    All
+                  </FilterPill>
+                  {PRIORITIES.map(p => (
+                    <FilterPill
+                      key={p}
+                      selected={filterPriority === p}
+                      onClick={() => onFilterPriority(p)}
+                      className={
+                        p === 'High'
+                          ? 'tasks-filter-pill--pri-high'
+                          : p === 'Medium'
+                            ? 'tasks-filter-pill--pri-medium'
+                            : 'tasks-filter-pill--pri-low'
+                      }
+                    >
+                      {p}
+                    </FilterPill>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="tasks-filter-meta tasks-filter-meta--panel">
+              <div className="tasks-filter-result-summary">
+                <span className="tasks-filter-result-count">
+                  {taskCount} {taskCount === 1 ? 'task' : 'tasks'}
+                </span>
+                {overdueCount > 0 ? (
+                  <>
+                    <span className="tasks-filter-result-sep" aria-hidden>
+                      {' '}
+                      •{' '}
+                    </span>
+                    <span className="tasks-filter-result-overdue">{overdueCount} overdue</span>
+                  </>
+                ) : null}
+              </div>
+            </div>
+          </div>
+        ) : null}
       </div>
     </div>
   );

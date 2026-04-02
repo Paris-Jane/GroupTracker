@@ -13,9 +13,10 @@ import Avatar from '../components/common/Avatar';
 import ConfirmDialog from '../components/common/ConfirmDialog';
 import BulkImportModal from '../components/Tasks/BulkImportModal';
 import TaskFormModal from '../components/Tasks/TaskFormModal';
+import QuickTasksModal from '../components/Tasks/QuickTasksModal';
 import PlanningPokerModal from '../components/games/PlanningPokerModal';
 import PickTasksModal from '../components/games/PickTasksModal';
-import { TaskFilters, type TasksViewTab, type TasksSortKey, memberChipColor } from '../components/Tasks/TaskFilters';
+import { TaskFilters, type TasksSortKey, memberChipColor } from '../components/Tasks/TaskFilters';
 
 interface Props {
   currentMember: GroupMember | null;
@@ -236,13 +237,14 @@ function TaskRow({ task, members, onOpen, onStatusCycle, onAssigneesChange }: Ta
 export default function TasksPage({ currentMember, members }: Props) {
   const [tasks, setTasks] = useState<TaskItem[]>([]);
   const [settingsSprintCount, setSettingsSprintCount] = useState<number>(6);
-  const [view, setView] = useState<TasksViewTab>('all');
   const [sortKey, setSortKey] = useState<TasksSortKey>('deadline');
   const [search, setSearch] = useState('');
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [filterPriority, setFilterPriority] = useState<TaskPriority | ''>('');
   const [editingTask, setEditingTask] = useState<TaskItem | null | 'new'>(null);
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [showBulkImport, setShowBulkImport] = useState(false);
+  const [showQuickTasks, setShowQuickTasks] = useState(false);
   const [showPoker, setShowPoker] = useState(false);
   const [showPick, setShowPick] = useState(false);
   const [filterStatus, setFilterStatus] = useState<TaskStatus | ''>('');
@@ -274,15 +276,6 @@ export default function TasksPage({ currentMember, members }: Props) {
 
   const visible = useMemo(() => {
     let list = [...tasks];
-    if (view === 'mine' && currentMember) {
-      list = list.filter(t => t.assignments.some(a => a.groupMemberId === currentMember.id));
-    }
-    if (view === 'open') {
-      list = list.filter(t => t.status === 'NotStarted' || t.status === 'InProgress');
-    }
-    if (view === 'done') {
-      list = list.filter(t => t.status === 'Completed');
-    }
     if (filterPriority) list = list.filter(t => t.priority === filterPriority);
     if (filterStatus) list = list.filter(t => t.status === filterStatus);
     if (filterSprint !== '') list = list.filter(t => t.sprintNumber === filterSprint);
@@ -306,17 +299,7 @@ export default function TasksPage({ currentMember, members }: Props) {
       return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
     });
     return list;
-  }, [
-    tasks,
-    view,
-    sortKey,
-    search,
-    filterPriority,
-    filterStatus,
-    filterSprint,
-    filterAssigneeIds,
-    currentMember,
-  ]);
+  }, [tasks, sortKey, search, filterPriority, filterStatus, filterSprint, filterAssigneeIds]);
 
   const overdueCount = useMemo(
     () => visible.filter(t => isOverdue(t.deadline, t.status)).length,
@@ -325,9 +308,6 @@ export default function TasksPage({ currentMember, members }: Props) {
 
   const activeSummary = useMemo(() => {
     const parts: string[] = [];
-    if (view === 'mine') parts.push('View: Mine');
-    if (view === 'open') parts.push('View: Open');
-    if (view === 'done') parts.push('View: Done');
     if (filterStatus === 'NotStarted') parts.push('Status: To do');
     else if (filterStatus === 'InProgress') parts.push('Status: In progress');
     else if (filterStatus === 'Completed') parts.push('Status: Done');
@@ -341,10 +321,9 @@ export default function TasksPage({ currentMember, members }: Props) {
     if (filterPriority) parts.push(`Priority: ${filterPriority}`);
     if (search.trim()) parts.push(`Search: "${search.trim().length > 28 ? `${search.trim().slice(0, 28)}…` : search.trim()}"`);
     return parts.length ? parts.join(' \u2022 ') : null;
-  }, [view, filterStatus, filterSprint, filterAssigneeIds, filterPriority, search, members]);
+  }, [filterStatus, filterSprint, filterAssigneeIds, filterPriority, search, members]);
 
   const clearAllFilters = () => {
-    setView('all');
     setSearch('');
     setFilterStatus('');
     setFilterSprint('');
@@ -384,6 +363,10 @@ export default function TasksPage({ currentMember, members }: Props) {
   return (
     <div className="page tasks-page">
       <header className="page-title-block page-title-block--split">
+        <div>
+          <h1 className="page-title">Tasks</h1>
+          <p className="page-subtitle">All project work in one place</p>
+        </div>
         <div className="page-actions">
           <button type="button" className="btn btn-ghost btn-sm" onClick={() => setShowPoker(true)}>
             Poker
@@ -394,6 +377,9 @@ export default function TasksPage({ currentMember, members }: Props) {
           <button type="button" className="btn btn-secondary btn-sm" onClick={() => setShowBulkImport(true)}>
             Import
           </button>
+          <button type="button" className="btn btn-secondary btn-sm" onClick={() => setShowQuickTasks(true)}>
+            Quick tasks
+          </button>
           <button type="button" className="btn btn-primary btn-sm" onClick={() => setEditingTask('new')}>
             New task
           </button>
@@ -403,8 +389,8 @@ export default function TasksPage({ currentMember, members }: Props) {
       <TaskFilters
         search={search}
         onSearchChange={setSearch}
-        view={view}
-        onViewChange={setView}
+        filtersOpen={filtersOpen}
+        onToggleFilters={() => setFiltersOpen(o => !o)}
         filterStatus={filterStatus}
         onFilterStatus={setFilterStatus}
         sprintNumbers={sprintNumbers}
@@ -519,6 +505,13 @@ export default function TasksPage({ currentMember, members }: Props) {
         members={members}
         currentMemberId={currentMember?.id ?? null}
       />
+      {showQuickTasks && (
+        <QuickTasksModal
+          currentMemberId={currentMember?.id ?? null}
+          onClose={() => setShowQuickTasks(false)}
+          onCreated={load}
+        />
+      )}
     </div>
   );
 }

@@ -1132,12 +1132,15 @@ export async function getActivePokerSession(memberCount: number): Promise<PokerS
 
 export async function pokerMarkReady(sessionId: number, memberId: number, memberCount: number): Promise<PokerSessionState> {
   await supabase.from('poker_ready').upsert({ session_id: sessionId, group_member_id: memberId }, { onConflict: 'session_id,group_member_id' });
+  return fetchPokerState(sessionId, memberCount);
+}
+
+/** Move from ready to voting (any participant can start after people mark ready). */
+export async function pokerStartVoting(sessionId: number, memberCount: number): Promise<PokerSessionState> {
   const st = await fetchPokerState(sessionId, memberCount);
-  if (st.phase === 'ready' && st.readyMemberIds.length >= memberCount && memberCount > 0) {
-    await supabase.from('poker_sessions').update({ phase: 'voting' }).eq('id', sessionId);
-    return fetchPokerState(sessionId, memberCount);
-  }
-  return st;
+  if (st.phase !== 'ready') return st;
+  await supabase.from('poker_sessions').update({ phase: 'voting' }).eq('id', sessionId);
+  return fetchPokerState(sessionId, memberCount);
 }
 
 export async function pokerSubmitVote(sessionId: number, taskId: number, memberId: number, value: number, memberCount: number): Promise<PokerSessionState> {
@@ -1148,7 +1151,8 @@ export async function pokerSubmitVote(sessionId: number, taskId: number, memberI
   );
   const st = await fetchPokerState(sessionId, memberCount);
   const submitted = st.votes.filter(v => v.value != null).length;
-  if (st.phase === 'voting' && submitted >= memberCount && memberCount > 0) {
+  const needVotes = Math.max(1, st.readyMemberIds.length);
+  if (st.phase === 'voting' && submitted >= needVotes) {
     await supabase.from('poker_sessions').update({ phase: 'revealed' }).eq('id', sessionId);
     return fetchPokerState(sessionId, memberCount);
   }
@@ -1284,12 +1288,14 @@ export async function getActivePickSession(memberCount: number): Promise<PickSes
 
 export async function pickMarkReady(sessionId: number, memberId: number, memberCount: number): Promise<PickSessionState> {
   await supabase.from('pick_ready').upsert({ session_id: sessionId, group_member_id: memberId }, { onConflict: 'session_id,group_member_id' });
+  return fetchPickState(sessionId, memberCount);
+}
+
+export async function pickStartRating(sessionId: number, memberCount: number): Promise<PickSessionState> {
   const st = await fetchPickState(sessionId, memberCount);
-  if (st.phase === 'ready' && st.readyMemberIds.length >= memberCount && memberCount > 0) {
-    await supabase.from('pick_sessions').update({ phase: 'rating' }).eq('id', sessionId);
-    return fetchPickState(sessionId, memberCount);
-  }
-  return st;
+  if (st.phase !== 'ready') return st;
+  await supabase.from('pick_sessions').update({ phase: 'rating' }).eq('id', sessionId);
+  return fetchPickState(sessionId, memberCount);
 }
 
 export async function pickSubmitRating(sessionId: number, taskId: number, memberId: number, rating: number, memberCount: number): Promise<PickSessionState> {
@@ -1300,7 +1306,8 @@ export async function pickSubmitRating(sessionId: number, taskId: number, member
   );
   const st = await fetchPickState(sessionId, memberCount);
   const submitted = st.ratings.filter(r => r.rating != null).length;
-  if (st.phase === 'rating' && submitted >= memberCount && memberCount > 0) {
+  const needRatings = Math.max(1, st.readyMemberIds.length);
+  if (st.phase === 'rating' && submitted >= needRatings) {
     await supabase.from('pick_sessions').update({ phase: 'revealed' }).eq('id', sessionId);
     return fetchPickState(sessionId, memberCount);
   }

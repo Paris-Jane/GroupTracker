@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { bulkImportTasks, bulkImportSprintBundle, updateProjectSettings } from '../../api/client';
+import { bulkImportTasks, bulkImportSprintBundle, updateProjectSettings, getProjectSettings } from '../../api/client';
 import type {
   GroupMember,
   BulkImportTaskDto,
@@ -215,6 +215,23 @@ export default function BulkImportModal({ currentMember, onClose, onImported }: 
   const [previewProductGoal, setPreviewProductGoal] = useState('');
   const [error, setError] = useState('');
   const [importing, setImporting] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    getProjectSettings()
+      .then(s => {
+        if (cancelled) return;
+        const n = Math.max(1, Math.min(50, s.sprintCount ?? 6));
+        setSprintCount(n);
+        const d = [...(s.sprintDeadlines ?? [])];
+        while (d.length < n) d.push('');
+        setDeadlines(d.slice(0, n));
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     setDeadlines(d => {
