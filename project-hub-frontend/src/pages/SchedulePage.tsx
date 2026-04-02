@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useCallback, type CSSProperties } from 'react';
 import {
   getScheduleItemsBetween,
   createScheduleItem,
@@ -15,7 +15,12 @@ interface Props {
 
 const CATS: ScheduleCategory[] = ['Room', 'Meeting', 'Unavailable', 'Other'];
 
-function dayRange(start: string, end: string): string[] {
+const DAY_START_MIN = 7 * 60;
+const DAY_END_MIN = 20 * 60;
+const RANGE_MIN = DAY_END_MIN - DAY_START_MIN;
+const TIMELINE_HEIGHT_PX = 560;
+
+function weekDaysInclusive(start: string, end: string): string[] {
   const out: string[] = [];
   const a = new Date(start + 'T12:00:00');
   const b = new Date(end + 'T12:00:00');
@@ -29,16 +34,50 @@ function formatDayLabel(iso: string) {
   return new Date(iso + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
 }
 
+function parseTimeToMinutes(t: string): number {
+  const part = t.length >= 5 ? t.slice(0, 5) : t;
+  const [h, m] = part.split(':').map(Number);
+  if (Number.isNaN(h) || Number.isNaN(m)) return DAY_START_MIN;
+  return h * 60 + m;
+}
+
+function formatHour12(totalMin: number) {
+  const h24 = Math.floor(totalMin / 60);
+  const m = totalMin % 60;
+  const p = h24 >= 12 ? 'PM' : 'AM';
+  const h12 = h24 % 12 || 12;
+  return m ? `${h12}:${String(m).padStart(2, '0')} ${p}` : `${h12} ${p}`;
+}
+
+function blockLayout(it: ScheduleItem) {
+  let start = parseTimeToMinutes(it.startTime);
+  let end = parseTimeToMinutes(it.endTime);
+  if (end <= start) end = start + 30;
+  start = Math.max(DAY_START_MIN, Math.min(start, DAY_END_MIN));
+  end = Math.max(start + 15, Math.min(end, DAY_END_MIN));
+  const topPct = ((start - DAY_START_MIN) / RANGE_MIN) * 100;
+  const heightPct = ((end - start) / RANGE_MIN) * 100;
+  return {
+    top: `${topPct}%`,
+    height: `${Math.max(heightPct, 4)}%`,
+  };
+}
+
+const HOUR_TICKS = Array.from({ length: 14 }, (_, i) => DAY_START_MIN + i * 60);
+
 export default function SchedulePage({ currentMember, members }: Props) {
   const [items, setItems] = useState<ScheduleItem[]>([]);
   const [editing, setEditing] = useState<ScheduleItem | 'new' | null>(null);
 
-  const days = useMemo(() => dayRange(SCHEDULE_WEEK_START, SCHEDULE_WEEK_END), []);
+  const days = useMemo(() => weekDaysInclusive(SCHEDULE_WEEK_START, SCHEDULE_WEEK_END), []);
 
-  const load = () => getScheduleItemsBetween(SCHEDULE_WEEK_START, SCHEDULE_WEEK_END).then(setItems);
+  const load = useCallback(
+    () => getScheduleItemsBetween(SCHEDULE_WEEK_START, SCHEDULE_WEEK_END).then(setItems),
+    [],
+  );
   useEffect(() => {
     load();
-  }, []);
+  }, [load]);
 
   const byDay = useMemo(() => {
     const m = new Map<string, ScheduleItem[]>();
@@ -56,45 +95,72 @@ export default function SchedulePage({ currentMember, members }: Props) {
   const memberName = (id?: number) => members.find(x => x.id === id)?.name ?? '—';
 
   return (
-    <div className="page">
-      <header className="page-title-block">
-        <p className="page-subtitle">
-          {formatDayLabel(SCHEDULE_WEEK_START)} – {formatDayLabel(SCHEDULE_WEEK_END)}
-        </p>
+    <div className="page schedule-page-full">
+      <header className="page-title-block schedule-page-header">
+        <div>
+          <h1 className="page-title">Schedule</h1>
+          <p className="page-subtitle">
+            {formatDayLabel(SCHEDULE_WEEK_START)} – {formatDayLabel(SCHEDULE_WEEK_END)}
+          </p>
+        </div>
+        <button type="button" className="btn btn-primary btn-sm" onClick={() => setEditing('new')}>
+          Add block
+        </button>
       </header>
 
-      <section className="panel">
-        <div className="flex-between mb-3">
-          <h2 className="panel-heading mb-0">This week</h2>
-          <button type="button" className="btn btn-primary btn-sm" onClick={() => setEditing('new')}>
-            Add block
-          </button>
-        </div>
-        <div className="schedule-week">
-          {days.map(d => (
-            <div key={d} className="schedule-day-col">
-              <div className="schedule-day-head">{formatDayLabel(d)}</div>
-              <div className="schedule-day-body">
+      <section className="panel schedule-calendar-panel">
+        <div className="schedule-calendar" style={{ '--schedule-timeline-h': `${TIMELINE_HEIGHT_PX}px` } as CSSProperties}>
+          <div className="schedule-calendar-top">
+            <div className="schedule-calendar-corner" aria-hidden />
+            {days.map(d => (
+              <div key={d} className="schedule-day-head schedule-day-head--grid">
+                {formatDayLabel(d)}
+              </div>
+            ))}
+          </div>
+          <div className="schedule-calendar-body">
+            <div className="schedule-time-rail" aria-hidden>
+              <div className="schedule-time-rail-inner" style={{ height: TIMELINE_HEIGHT_PX }}>
+                {HOUR_TICKS.map(min => (
+                  <div
+                    key={min}
+                    className="schedule-time-tick"
+                    style={{ top: `${((min - DAY_START_MIN) / RANGE_MIN) * 100}%` }}
+                  >
+                    {formatHour12(min)}
+                  </div>
+                ))}
+              </div>
+            </div>
+            {days.map(d => (
+              <div key={d} className="schedule-timeline">
+                {HOUR_TICKS.map(min => (
+                  <div
+                    key={min}
+                    className="schedule-hour-line"
+                    style={{ top: `${((min - DAY_START_MIN) / RANGE_MIN) * 100}%` }}
+                  />
+                ))}
                 {(byDay.get(d) ?? []).map(it => (
                   <button
                     key={it.id}
                     type="button"
-                    className={`schedule-block schedule-cat-${it.category.toLowerCase()}`}
+                    className={`schedule-block-abs schedule-cat-${it.category.toLowerCase()}`}
+                    style={blockLayout(it)}
                     onClick={() => setEditing(it)}
                   >
-                    <div className="schedule-block-time">
+                    <div className="schedule-block-abs-time">
                       {it.startTime.slice(0, 5)} – {it.endTime.slice(0, 5)}
                     </div>
-                    <div className="schedule-block-title">{it.title}</div>
-                    <div className="text-xs text-muted">{it.category}</div>
+                    <div className="schedule-block-abs-title">{it.title}</div>
                     {it.ownerMemberId != null && (
-                      <div className="text-xs">{memberName(it.ownerMemberId)}</div>
+                      <div className="schedule-block-abs-owner">{memberName(it.ownerMemberId)}</div>
                     )}
                   </button>
                 ))}
               </div>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
       </section>
 

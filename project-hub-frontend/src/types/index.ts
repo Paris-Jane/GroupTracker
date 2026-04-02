@@ -247,6 +247,7 @@ export interface BulkImportAiBundle {
 }
 
 export const SCHEDULE_WEEK_START = '2026-04-06';
-export const SCHEDULE_WEEK_END = '2026-04-10';
+/** Inclusive end of the week shown on the schedule (7 days from start). */
+export const SCHEDULE_WEEK_END = '2026-04-12';
 
 export const POKER_DECK = [0, 1, 2, 3, 5, 8, 13] as const;

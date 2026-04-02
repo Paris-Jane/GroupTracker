@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo, useRef, useCallback } from 'react';
+import { useEffect, useState, useMemo, useRef, useCallback, type CSSProperties } from 'react';
 import {
   getTasks,
   getProjectSettings,
@@ -200,18 +200,29 @@ function TaskRow({ task, members, onOpen, onStatusCycle, onAssigneesChange }: Ta
             </button>
           )}
           {assignOpen && (
-            <div className="task-assign-popover" role="dialog" aria-label="Choose assignees">
-              {members.map(m => (
-                <label key={m.id} className="task-assign-popover-row">
-                  <input
-                    type="checkbox"
-                    checked={assignedIds.includes(m.id)}
-                    onChange={() => void toggleAssignee(m.id)}
-                  />
-                  <Avatar initial={m.avatarInitial} color={memberChipColor(m)} size="sm" name={m.name} />
-                  <span>{m.name}</span>
-                </label>
-              ))}
+            <div className="task-assign-popover task-assign-popover--icons" role="dialog" aria-label="Choose assignees">
+              <p className="task-assign-popover-hint">Select people</p>
+              <div className="task-assign-popover-avatars">
+                {members.map(m => {
+                  const on = assignedIds.includes(m.id);
+                  const c = memberChipColor(m);
+                  const initial = (m.avatarInitial ?? m.name.charAt(0) ?? '?').toUpperCase();
+                  return (
+                    <button
+                      key={m.id}
+                      type="button"
+                      className={`task-assign-icon-btn${on ? ' task-assign-icon-btn--on' : ''}`}
+                      style={{ '--assign-icon-bg': c } as CSSProperties}
+                      title={m.name}
+                      aria-label={m.name}
+                      aria-pressed={on}
+                      onClick={() => void toggleAssignee(m.id)}
+                    >
+                      <span className="task-assign-icon-circle">{initial}</span>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
           )}
         </div>
@@ -419,7 +430,7 @@ export default function TasksPage({ currentMember, members }: Props) {
         <span>Sprint</span>
         <span>Deadline</span>
         <span>Status</span>
-        <span className="task-list-header-assignee">Assigned</span>
+        <span className="task-list-header-assignee">User</span>
       </div>
 
       {visible.length === 0 ? (

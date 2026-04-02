@@ -16,7 +16,8 @@ import {
   assignTask,
   deleteTask,
 } from '../api/client';
-import type { GroupMember, TaskItem, TaskStatus, CreateTaskDto, SprintGoal, SprintReview } from '../types';
+import type { GroupMember, TaskItem, TaskStatus, CreateTaskDto, SprintReview } from '../types';
+import { inferCurrentSprintNumber, parseLocalDate } from '../lib/sprintCurrent';
 import UserAvatar from '../components/common/UserAvatar';
 import Avatar from '../components/common/Avatar';
 import TaskFormModal from '../components/Tasks/TaskFormModal';
@@ -49,40 +50,6 @@ function statusBadgeClass(s: TaskStatus) {
   if (s === 'Completed') return 'sprint-b-badge--done';
   if (s === 'InProgress') return 'sprint-b-badge--progress';
   return 'sprint-b-badge--todo';
-}
-
-function parseLocalDate(s: string) {
-  const [y, m, d] = s.split('T')[0].split('-').map(Number);
-  return new Date(y, m - 1, d);
-}
-
-function startOfLocalDay(d: Date) {
-  const x = new Date(d);
-  x.setHours(0, 0, 0, 0);
-  return x.getTime();
-}
-
-function endOfLocalDayFromIso(s: string) {
-  const x = parseLocalDate(s);
-  x.setHours(23, 59, 59, 999);
-  return x.getTime();
-}
-
-function inferCurrentSprintNumber(goals: SprintGoal[], tasks: TaskItem[], maxS: number): number {
-  const taskMax = Math.max(0, ...tasks.map(t => t.sprintNumber ?? 0));
-  const goalNums = goals.map(g => g.sprintNumber);
-  const floor = Math.min(Math.max(1, taskMax, ...goalNums, 1), maxS);
-
-  const withDates = [...goals].filter(g => g.sprintDueDate).sort((a, b) => a.sprintNumber - b.sprintNumber);
-  if (withDates.length === 0) return Math.min(Math.max(1, taskMax || 1), maxS);
-
-  const today = startOfLocalDay(new Date());
-  for (const g of withDates) {
-    if (g.sprintNumber > maxS) continue;
-    const end = endOfLocalDayFromIso(g.sprintDueDate!);
-    if (today <= end) return g.sprintNumber;
-  }
-  return floor;
 }
 
 type BoardCol = 'todo' | 'progress' | 'done';

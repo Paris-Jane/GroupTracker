@@ -171,11 +171,11 @@ export default function ResourcesPage({}: Props) {
                     {items.map(r => (
                       <li key={r.id} className="resource-url-only-row">
                         {r.url ? (
-                          <a href={r.url} target="_blank" rel="noreferrer" className="resource-url-only-link">
-                            {r.url}
+                          <a href={r.url} target="_blank" rel="noreferrer" className="resource-url-only-link resource-class-title-link">
+                            {r.title || r.url}
                           </a>
                         ) : (
-                          <span className="resource-url-missing">No URL</span>
+                          <span className="resource-url-missing">{r.title || 'No URL'}</span>
                         )}
                       </li>
                     ))}
