@@ -86,10 +86,6 @@ export default function TaskFormModal({ task, members, onSave, onClose, onDelete
             <textarea value={notes} onChange={e => setNotes(e.target.value)} placeholder="Details, context, links…" />
           </div>
           <div className="form-row">
-            <label>Estimated time</label>
-            <input value={estimatedTime} onChange={e => setEstimatedTime(e.target.value)} placeholder="e.g. 2 hours" />
-          </div>
-          <div className="form-row">
             <label>Sprint</label>
             <input type="number" min={0} value={sprintNumber} onChange={e => setSprintNumber(e.target.value)} placeholder="Sprint number (optional)" />
           </div>
@@ -145,13 +141,17 @@ export default function TaskFormModal({ task, members, onSave, onClose, onDelete
                 </div>
                 <div className="form-grid mb-3">
                   <div>
+                    <label>Estimated time</label>
+                    <input value={estimatedTime} onChange={e => setEstimatedTime(e.target.value)} placeholder="e.g. 2 hours" />
+                  </div>
+                  <div>
                     <label>Evaluation (poker points)</label>
                     <input type="number" min={0} value={evaluation} onChange={e => setEvaluation(e.target.value)} placeholder="Optional" />
                   </div>
-                  <div>
-                    <label>Definition of done</label>
-                    <input value={definitionOfDone} onChange={e => setDefinitionOfDone(e.target.value)} placeholder="When is this task done?" />
-                  </div>
+                </div>
+                <div className="form-row">
+                  <label>Definition of done</label>
+                  <input value={definitionOfDone} onChange={e => setDefinitionOfDone(e.target.value)} placeholder="When is this task done?" />
                 </div>
                 <div className="form-grid mb-3">
                   <div>

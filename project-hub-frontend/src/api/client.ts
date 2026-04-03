@@ -1131,7 +1131,7 @@ export type PokerSessionState = {
   currentTaskId: number | null;
   taskQueue: number[];
   currentIndex: number;
-  phase: 'ready' | 'voting' | 'revealed';
+  phase: 'ready' | 'voting' | 'revealed' | 'complete';
   readyMemberIds: number[];
   votes: { memberId: number; value: number | null }[];
   memberCount: number;
@@ -1174,6 +1174,13 @@ async function fetchPokerState(sessionId: number, memberCount: number): Promise<
 }
 
 export async function startPokerSession(allTasks: boolean, sprintNumber: number | null, tasks: TaskItem[]): Promise<number> {
+  const settings = await getProjectSettings();
+  const prev = settings.activePokerSessionId;
+  if (prev != null) {
+    await supabase.from('poker_votes').delete().eq('session_id', prev);
+    await supabase.from('poker_ready').delete().eq('session_id', prev);
+    await supabase.from('poker_sessions').delete().eq('id', prev);
+  }
   const queue = tasks
     .filter(t => allTasks || (sprintNumber != null && t.sprintNumber === sprintNumber))
     .map(t => t.id);
@@ -1206,6 +1213,8 @@ export async function getActivePokerSession(memberCount: number): Promise<PokerS
 }
 
 export async function pokerMarkReady(sessionId: number, memberId: number, memberCount: number): Promise<PokerSessionState> {
+  const st = await fetchPokerState(sessionId, memberCount);
+  if (st.phase === 'complete') return st;
   await supabase.from('poker_ready').upsert({ session_id: sessionId, group_member_id: memberId }, { onConflict: 'session_id,group_member_id' });
   return fetchPokerState(sessionId, memberCount);
 }
@@ -1219,6 +1228,8 @@ export async function pokerStartVoting(sessionId: number, memberCount: number): 
 }
 
 export async function pokerSubmitVote(sessionId: number, taskId: number, memberId: number, value: number, memberCount: number): Promise<PokerSessionState> {
+  const before = await fetchPokerState(sessionId, memberCount);
+  if (before.phase !== 'voting') return before;
   if (!pokerDeck.includes(value)) throw new Error('Invalid card');
   await supabase.from('poker_votes').upsert(
     { session_id: sessionId, task_item_id: taskId, group_member_id: memberId, value },
@@ -1241,13 +1252,14 @@ export async function pokerNextTask(sessionId: number, memberCount: number): Pro
   const queue = Array.isArray(row.task_queue) ? row.task_queue : [];
   const next = row.current_index + 1;
   if (next >= queue.length) {
-    await supabase.from('poker_votes').delete().eq('session_id', sessionId);
     await supabase.from('poker_ready').delete().eq('session_id', sessionId);
-    await supabase.from('poker_sessions').delete().eq('id', sessionId);
-    await updateProjectSettings({ activePokerSessionId: undefined });
-    return null;
+    await supabase.from('poker_sessions').update({ phase: 'complete' }).eq('id', sessionId);
+    return fetchPokerState(sessionId, memberCount);
   }
-  await supabase.from('poker_votes').delete().eq('session_id', sessionId);
+  const nextTaskId = queue[next];
+  if (nextTaskId != null) {
+    await supabase.from('poker_votes').delete().eq('session_id', sessionId).eq('task_item_id', nextTaskId);
+  }
   await supabase.from('poker_sessions').update({ current_index: next, phase: 'voting' }).eq('id', sessionId);
   return fetchPokerState(sessionId, memberCount);
 }
@@ -1287,7 +1299,7 @@ export type PickSessionState = {
   currentTaskId: number | null;
   taskQueue: number[];
   currentIndex: number;
-  phase: 'ready' | 'rating' | 'revealed';
+  phase: 'ready' | 'rating' | 'revealed' | 'complete';
   readyMemberIds: number[];
   ratings: { memberId: number; rating: number | null }[];
   memberCount: number;
@@ -1330,6 +1342,13 @@ async function fetchPickState(sessionId: number, memberCount: number): Promise<P
 }
 
 export async function startPickSession(allTasks: boolean, sprintNumber: number | null, tasks: TaskItem[]): Promise<number> {
+  const settings = await getProjectSettings();
+  const prev = settings.activePickSessionId;
+  if (prev != null) {
+    await supabase.from('pick_ratings').delete().eq('session_id', prev);
+    await supabase.from('pick_ready').delete().eq('session_id', prev);
+    await supabase.from('pick_sessions').delete().eq('id', prev);
+  }
   const queue = tasks
     .filter(t => allTasks || (sprintNumber != null && t.sprintNumber === sprintNumber))
     .map(t => t.id);
@@ -1362,6 +1381,8 @@ export async function getActivePickSession(memberCount: number): Promise<PickSes
 }
 
 export async function pickMarkReady(sessionId: number, memberId: number, memberCount: number): Promise<PickSessionState> {
+  const st = await fetchPickState(sessionId, memberCount);
+  if (st.phase === 'complete') return st;
   await supabase.from('pick_ready').upsert({ session_id: sessionId, group_member_id: memberId }, { onConflict: 'session_id,group_member_id' });
   return fetchPickState(sessionId, memberCount);
 }
@@ -1374,6 +1395,8 @@ export async function pickStartRating(sessionId: number, memberCount: number): P
 }
 
 export async function pickSubmitRating(sessionId: number, taskId: number, memberId: number, rating: number, memberCount: number): Promise<PickSessionState> {
+  const before = await fetchPickState(sessionId, memberCount);
+  if (before.phase !== 'rating') return before;
   if (rating < 1 || rating > 10) throw new Error('Rating 1–10');
   await supabase.from('pick_ratings').upsert(
     { session_id: sessionId, task_item_id: taskId, group_member_id: memberId, rating },
@@ -1396,15 +1419,66 @@ export async function pickNextTask(sessionId: number, memberCount: number): Prom
   const queue = Array.isArray(row.task_queue) ? row.task_queue : [];
   const next = row.current_index + 1;
   if (next >= queue.length) {
-    await supabase.from('pick_ratings').delete().eq('session_id', sessionId);
     await supabase.from('pick_ready').delete().eq('session_id', sessionId);
-    await supabase.from('pick_sessions').delete().eq('id', sessionId);
-    await updateProjectSettings({ activePickSessionId: undefined });
-    return null;
+    await supabase.from('pick_sessions').update({ phase: 'complete' }).eq('id', sessionId);
+    return fetchPickState(sessionId, memberCount);
   }
-  await supabase.from('pick_ratings').delete().eq('session_id', sessionId);
+  const nextTaskId = queue[next];
+  if (nextTaskId != null) {
+    await supabase.from('pick_ratings').delete().eq('session_id', sessionId).eq('task_item_id', nextTaskId);
+  }
   await supabase.from('pick_sessions').update({ current_index: next, phase: 'rating' }).eq('id', sessionId);
   return fetchPickState(sessionId, memberCount);
+}
+
+export type PickRatingRow = { taskItemId: number; memberId: number; rating: number | null };
+
+export async function fetchPickSessionAllRatings(sessionId: number): Promise<{
+  taskQueue: number[];
+  ratings: PickRatingRow[];
+}> {
+  const { data: s } = await supabase.from('pick_sessions').select('task_queue').eq('id', sessionId).single();
+  if (!s) return { taskQueue: [], ratings: [] };
+  const row = s as { task_queue: unknown };
+  const raw = row.task_queue;
+  const queue = Array.isArray(raw) ? raw.map(Number) : [];
+  const { data: rows } = await supabase
+    .from('pick_ratings')
+    .select('task_item_id,group_member_id,rating')
+    .eq('session_id', sessionId);
+  return {
+    taskQueue: queue,
+    ratings: (rows ?? []).map((r: { task_item_id: number; group_member_id: number; rating: number | null }) => ({
+      taskItemId: Number(r.task_item_id),
+      memberId: Number(r.group_member_id),
+      rating: r.rating,
+    })),
+  };
+}
+
+export type PokerVoteRow = { taskItemId: number; memberId: number; value: number | null };
+
+export async function fetchPokerSessionAllVotes(sessionId: number): Promise<{
+  taskQueue: number[];
+  votes: PokerVoteRow[];
+}> {
+  const { data: s } = await supabase.from('poker_sessions').select('task_queue').eq('id', sessionId).single();
+  if (!s) return { taskQueue: [], votes: [] };
+  const row = s as { task_queue: unknown };
+  const raw = row.task_queue;
+  const queue = Array.isArray(raw) ? raw.map(Number) : [];
+  const { data: rows } = await supabase
+    .from('poker_votes')
+    .select('task_item_id,group_member_id,value')
+    .eq('session_id', sessionId);
+  return {
+    taskQueue: queue,
+    votes: (rows ?? []).map((r: { task_item_id: number; group_member_id: number; value: number | null }) => ({
+      taskItemId: Number(r.task_item_id),
+      memberId: Number(r.group_member_id),
+      value: r.value,
+    })),
+  };
 }
 
 // Legacy comfort ratings (optional — table still exists)

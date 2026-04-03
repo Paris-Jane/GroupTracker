@@ -11,6 +11,8 @@ export type TaskColumnKey =
   | 'status'
   | 'users'
   | 'priority'
+  | 'evaluation'
+  | 'estimatedTime'
   | 'updated'
   | 'notes';
 
@@ -21,6 +23,8 @@ export const ALL_TASK_COLUMN_KEYS: TaskColumnKey[] = [
   'status',
   'users',
   'priority',
+  'evaluation',
+  'estimatedTime',
   'updated',
   'notes',
 ];
@@ -34,6 +38,8 @@ const COLUMN_LABELS: Record<TaskColumnKey, string> = {
   status: 'Status',
   users: 'Users',
   priority: 'Priority',
+  evaluation: 'Evaluation',
+  estimatedTime: 'Est. time',
   updated: 'Last updated',
   notes: 'Notes',
 };

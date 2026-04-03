@@ -1,4 +1,5 @@
 import { useEffect, useState, useMemo, useRef, useCallback, type CSSProperties } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import {
   getTasks,
   getProjectSettings,
@@ -106,7 +107,9 @@ function taskListGridColumns(batchMode: boolean, cols: TaskColumnKey[]): string 
     deadline: '88px',
     status: '118px',
     users: 'minmax(112px, auto)',
-    priority: '76px',
+    priority: '88px',
+    evaluation: '72px',
+    estimatedTime: '96px',
     updated: '112px',
     notes: 'minmax(100px, 1fr)',
   };
@@ -302,7 +305,23 @@ function TaskRow({
       case 'priority':
         return (
           <div className="task-row-pri-inline">
-            <span className="task-row-pri-text">{task.priority}</span>
+            <span
+              className={`task-priority-chip task-priority-chip--${task.priority === 'High' ? 'high' : task.priority === 'Medium' ? 'medium' : 'low'}`}
+            >
+              {task.priority}
+            </span>
+          </div>
+        );
+      case 'evaluation':
+        return (
+          <div className="task-row-eval text-muted text-xs">
+            {task.evaluation != null ? String(task.evaluation) : '—'}
+          </div>
+        );
+      case 'estimatedTime':
+        return (
+          <div className="task-row-est text-muted text-xs" title={task.estimatedTime ?? undefined}>
+            {task.estimatedTime?.trim() ? task.estimatedTime.trim() : '—'}
           </div>
         );
       case 'updated':
@@ -358,6 +377,8 @@ function TaskRow({
 // ── Main Tasks Page ──────────────────────────────────────────────────────────
 
 export default function TasksPage({ currentMember, members }: Props) {
+  const location = useLocation();
+  const navigate = useNavigate();
   const [tasks, setTasks] = useState<TaskItem[]>([]);
   const [settingsSprintCount, setSettingsSprintCount] = useState<number>(6);
   const [sortKey, setSortKey] = useState<TasksSortKey>('deadline');
@@ -404,6 +425,14 @@ export default function TasksPage({ currentMember, members }: Props) {
     load();
     getProjectSettings().then(s => setSettingsSprintCount(s.sprintCount ?? 6));
   }, [load]);
+
+  useEffect(() => {
+    const st = location.state as { openBulkImport?: boolean } | null;
+    if (st?.openBulkImport) {
+      setShowBulkImport(true);
+      navigate(location.pathname, { replace: true, state: {} });
+    }
+  }, [location, navigate]);
 
   const sprintNumbers = useMemo(() => {
     const fromTasks = new Set<number>();
@@ -647,89 +676,96 @@ export default function TasksPage({ currentMember, members }: Props) {
               Clear selection
             </button>
           </div>
-          <div className="tasks-batch-bar-section">
-            <span className="tasks-batch-label">Assignees</span>
-            <div className="tasks-batch-chips">
-              {members.map(m => (
-                <button
-                  key={m.id}
-                  type="button"
-                  className={`tasks-batch-chip${bulkAssigneeIds.includes(m.id) ? ' is-on' : ''}`}
-                  onClick={() => toggleBulkMember(m.id)}
-                >
-                  {m.name}
-                </button>
-              ))}
-            </div>
-            <button type="button" className="btn btn-secondary btn-sm" onClick={() => void applyBulkAssignees()}>
-              Set assignees
-            </button>
-          </div>
-          <div className="tasks-batch-bar-section tasks-batch-bar-row">
-            <label className="tasks-batch-label">
-              Sprint
-              <select
-                className="select-compact ml-1"
-                value={bulkSprint === '' ? '' : String(bulkSprint)}
-                onChange={e => setBulkSprint(e.target.value === '' ? '' : Number(e.target.value))}
-              >
-                <option value="">Choose…</option>
-                {sprintNumbers.map(n => (
-                  <option key={n} value={n}>
-                    {n}
-                  </option>
+          <div className="tasks-batch-bar-section tasks-batch-assign-block">
+            <span className="tasks-batch-label tasks-batch-label--block">Assignees</span>
+            <div className="tasks-batch-assign-row">
+              <div className="tasks-batch-chips">
+                {members.map(m => (
+                  <button
+                    key={m.id}
+                    type="button"
+                    className={`tasks-batch-chip${bulkAssigneeIds.includes(m.id) ? ' is-on' : ''}`}
+                    onClick={() => toggleBulkMember(m.id)}
+                  >
+                    {m.name}
+                  </button>
                 ))}
-              </select>
-            </label>
-            <button type="button" className="btn btn-secondary btn-sm" onClick={() => void applyBulkSprint()}>
-              Apply sprint
-            </button>
-            <label className="tasks-batch-label">
-              Deadline
-              <input
-                type="date"
-                className="ml-1"
-                value={bulkDeadline}
-                onChange={e => setBulkDeadline(e.target.value)}
-              />
-            </label>
-            <button type="button" className="btn btn-secondary btn-sm" onClick={() => void applyBulkDeadline()}>
-              Apply deadline
-            </button>
+              </div>
+              <button type="button" className="btn btn-secondary btn-sm" onClick={() => void applyBulkAssignees()}>
+                Set assignees
+              </button>
+            </div>
           </div>
-          <div className="tasks-batch-bar-section tasks-batch-bar-row">
-            <label className="tasks-batch-label">
-              Status
-              <select
-                className="select-compact ml-1"
-                value={bulkStatus}
-                onChange={e => setBulkStatus(e.target.value as TaskStatus | '')}
-              >
-                <option value="">Choose…</option>
-                <option value="NotStarted">To do</option>
-                <option value="InProgress">In progress</option>
-                <option value="Completed">Done</option>
-              </select>
-            </label>
-            <button type="button" className="btn btn-secondary btn-sm" onClick={() => void applyBulkStatus()}>
-              Apply status
-            </button>
-            <label className="tasks-batch-label">
-              Priority
-              <select
-                className="select-compact ml-1"
-                value={bulkPriority}
-                onChange={e => setBulkPriority(e.target.value as TaskPriority | '')}
-              >
-                <option value="">Choose…</option>
-                <option value="High">High</option>
-                <option value="Medium">Medium</option>
-                <option value="Low">Low</option>
-              </select>
-            </label>
-            <button type="button" className="btn btn-secondary btn-sm" onClick={() => void applyBulkPriority()}>
-              Apply priority
-            </button>
+          <div className="tasks-batch-bar-section">
+            <div className="tasks-batch-field-grid">
+              <div className="tasks-batch-field">
+                <label className="tasks-batch-label">Sprint</label>
+                <div className="tasks-batch-field-actions">
+                  <select
+                    className="select-compact"
+                    value={bulkSprint === '' ? '' : String(bulkSprint)}
+                    onChange={e => setBulkSprint(e.target.value === '' ? '' : Number(e.target.value))}
+                  >
+                    <option value="">Choose…</option>
+                    {sprintNumbers.map(n => (
+                      <option key={n} value={n}>
+                        {n}
+                      </option>
+                    ))}
+                  </select>
+                  <button type="button" className="btn btn-secondary btn-sm" onClick={() => void applyBulkSprint()}>
+                    Apply
+                  </button>
+                </div>
+              </div>
+              <div className="tasks-batch-field">
+                <label className="tasks-batch-label">Deadline</label>
+                <div className="tasks-batch-field-actions">
+                  <input type="date" value={bulkDeadline} onChange={e => setBulkDeadline(e.target.value)} />
+                  <button type="button" className="btn btn-secondary btn-sm" onClick={() => void applyBulkDeadline()}>
+                    Apply
+                  </button>
+                </div>
+              </div>
+              <div className="tasks-batch-field">
+                <label className="tasks-batch-label">Status</label>
+                <div className="tasks-batch-field-actions">
+                  <select
+                    className="select-compact"
+                    value={bulkStatus}
+                    onChange={e => setBulkStatus(e.target.value as TaskStatus | '')}
+                  >
+                    <option value="">Choose…</option>
+                    <option value="NotStarted">To do</option>
+                    <option value="InProgress">In progress</option>
+                    <option value="Completed">Done</option>
+                  </select>
+                  <button type="button" className="btn btn-secondary btn-sm" onClick={() => void applyBulkStatus()}>
+                    Apply
+                  </button>
+                </div>
+              </div>
+              <div className="tasks-batch-field">
+                <label className="tasks-batch-label">Priority</label>
+                <div className="tasks-batch-field-actions">
+                  <select
+                    className="select-compact"
+                    value={bulkPriority}
+                    onChange={e => setBulkPriority(e.target.value as TaskPriority | '')}
+                  >
+                    <option value="">Choose…</option>
+                    <option value="High">High</option>
+                    <option value="Medium">Medium</option>
+                    <option value="Low">Low</option>
+                  </select>
+                  <button type="button" className="btn btn-secondary btn-sm" onClick={() => void applyBulkPriority()}>
+                    Apply
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div className="tasks-batch-bar-section tasks-batch-bar-footer">
             <button type="button" className="btn btn-danger btn-sm" onClick={() => setBulkDeleteIds([...selectedIds])}>
               Delete selected
             </button>
@@ -762,9 +798,13 @@ export default function TasksPage({ currentMember, members }: Props) {
                       ? 'Users'
                       : col === 'priority'
                         ? 'Priority'
-                        : col === 'updated'
-                          ? 'Updated'
-                          : 'Notes'}
+                        : col === 'evaluation'
+                          ? 'Eval'
+                          : col === 'estimatedTime'
+                            ? 'Est. time'
+                            : col === 'updated'
+                              ? 'Updated'
+                              : 'Notes'}
           </span>
         ))}
       </div>
@@ -873,6 +913,7 @@ export default function TasksPage({ currentMember, members }: Props) {
         tasks={tasks}
         members={members}
         currentMemberId={currentMember?.id ?? null}
+        onTasksChanged={load}
       />
       {showQuickTasks && (
         <QuickTasksModal

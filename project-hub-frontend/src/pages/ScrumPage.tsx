@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, useCallback, type CSSProperties } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   getTasks,
   getProjectSettings,
@@ -20,6 +21,7 @@ import type {
   GroupMember,
   TaskItem,
   TaskStatus,
+  TaskCategory,
   CreateTaskDto,
   SprintReview,
   SprintReviewKind,
@@ -187,6 +189,7 @@ function clampMenuPosition(clientX: number, clientY: number, menuW: number, menu
 }
 
 export default function ScrumPage({ currentMember, members }: Props) {
+  const navigate = useNavigate();
   const [tasks, setTasks] = useState<TaskItem[]>([]);
   const [settings, setSettings] = useState<Awaited<ReturnType<typeof getProjectSettings>> | null>(null);
   const [sprintGoals, setSprintGoals] = useState<Awaited<ReturnType<typeof getSprintGoals>>>([]);
@@ -194,7 +197,13 @@ export default function ScrumPage({ currentMember, members }: Props) {
   const [reviews, setReviews] = useState<SprintReview[]>([]);
   const [reviewWellBody, setReviewWellBody] = useState('');
   const [reviewImproveBody, setReviewImproveBody] = useState('');
+  const [wellAddOpen, setWellAddOpen] = useState(false);
+  const [improveAddOpen, setImproveAddOpen] = useState(false);
   const [savingDetails, setSavingDetails] = useState(false);
+  const [planChoiceOpen, setPlanChoiceOpen] = useState(false);
+  const [planManualOpen, setPlanManualOpen] = useState(false);
+  const [manualGoalDrafts, setManualGoalDrafts] = useState<Record<number, string>>({});
+  const [savingManualGoals, setSavingManualGoals] = useState(false);
 
   const [detailsModalOpen, setDetailsModalOpen] = useState(false);
   const [productGoalDraft, setProductGoalDraft] = useState('');
@@ -207,6 +216,7 @@ export default function ScrumPage({ currentMember, members }: Props) {
   const [newTaskDefaults, setNewTaskDefaults] = useState<{
     status?: TaskStatus;
     sprintNumber?: number;
+    category?: TaskCategory;
   } | null>(null);
   const [editingReview, setEditingReview] = useState<{
     id: number;
@@ -241,6 +251,23 @@ export default function ScrumPage({ currentMember, members }: Props) {
   useEffect(() => {
     loadReviews();
   }, [sprintNum]);
+
+  useEffect(() => {
+    setWellAddOpen(false);
+    setImproveAddOpen(false);
+    setReviewWellBody('');
+    setReviewImproveBody('');
+  }, [sprintNum]);
+
+  useEffect(() => {
+    if (!planManualOpen) return;
+    const d: Record<number, string> = {};
+    for (let i = 1; i <= configuredSprintCount; i++) {
+      const g = sprintGoals.find(x => x.sprintNumber === i);
+      d[i] = g?.goal ?? '';
+    }
+    setManualGoalDrafts(d);
+  }, [planManualOpen, configuredSprintCount, sprintGoals]);
 
   const maxSprint = configuredSprintCount;
 
@@ -356,6 +383,30 @@ export default function ScrumPage({ currentMember, members }: Props) {
     setEditingTask('new');
   };
 
+  const openNewTaskForSprint = (sn: number) => {
+    setNewTaskDefaults({ status: 'NotStarted', sprintNumber: sn, category: 'SprintBacklog' });
+    setEditingTask('new');
+  };
+
+  const saveManualGoals = async () => {
+    setSavingManualGoals(true);
+    try {
+      for (let i = 1; i <= configuredSprintCount; i++) {
+        const g = sprintGoals.find(x => x.sprintNumber === i);
+        const goal = (manualGoalDrafts[i] ?? '').trim();
+        await upsertSprintGoal({
+          sprintNumber: i,
+          goal,
+          sprintDueDate: g?.sprintDueDate,
+        });
+      }
+      await loadGoals();
+      setPlanManualOpen(false);
+    } finally {
+      setSavingManualGoals(false);
+    }
+  };
+
   const formatDue = (iso?: string) => {
     if (!iso) return null;
     return parseLocalDate(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
@@ -441,8 +492,13 @@ export default function ScrumPage({ currentMember, members }: Props) {
 
       {/* Section 2: Board */}
       <section className="sprint-zone sprint-zone--board" aria-label="Sprint board">
-        <h2 className="sprint-zone-title sprint-retro-card-title">Sprint board</h2>
         <div className="sprint-board-shell">
+          <div className="sprint-board-toolbar">
+            <h2 className="sprint-board-toolbar-title">Sprint board</h2>
+            <button type="button" className="btn btn-secondary btn-sm" onClick={() => setPlanChoiceOpen(true)}>
+              Plan sprints
+            </button>
+          </div>
         <div className="sprint-kanban-v3">
           {(
             [
@@ -498,30 +554,45 @@ export default function ScrumPage({ currentMember, members }: Props) {
           <h2 className="sprint-zone-title sprint-retro-card-title">Sprint retrospective</h2>
           <div className="sprint-retro-two-col">
             <div className="sprint-retro-column">
-              <h3 className="sprint-retro-column-title">What went well</h3>
-              <textarea
-                className="sprint-review-textarea"
-                rows={3}
-                value={reviewWellBody}
-                onChange={e => setReviewWellBody(e.target.value)}
-                placeholder="Share positives, wins, and things that worked…"
-                disabled={!currentMember}
-              />
-              <div className="sprint-review-compose-actions">
+              <div className="sprint-retro-column-head">
+                <h3 className="sprint-retro-column-title">What went well</h3>
                 <button
                   type="button"
-                  className="btn btn-primary btn-sm"
-                  disabled={!currentMember || !reviewWellBody.trim()}
-                  onClick={async () => {
-                    if (!currentMember || !reviewWellBody.trim()) return;
-                    await addSprintReview(sprintNum, currentMember.id, reviewWellBody.trim(), 'well');
-                    setReviewWellBody('');
-                    loadReviews();
-                  }}
+                  className="btn btn-secondary btn-sm"
+                  onClick={() => setWellAddOpen(o => !o)}
+                  aria-expanded={wellAddOpen}
                 >
-                  Post
+                  {wellAddOpen ? 'Cancel' : 'Add'}
                 </button>
               </div>
+              {wellAddOpen ? (
+                <>
+                  <textarea
+                    className="sprint-review-textarea"
+                    rows={3}
+                    value={reviewWellBody}
+                    onChange={e => setReviewWellBody(e.target.value)}
+                    placeholder="Share positives, wins, and things that worked…"
+                    disabled={!currentMember}
+                  />
+                  <div className="sprint-review-compose-actions">
+                    <button
+                      type="button"
+                      className="btn btn-primary btn-sm"
+                      disabled={!currentMember || !reviewWellBody.trim()}
+                      onClick={async () => {
+                        if (!currentMember || !reviewWellBody.trim()) return;
+                        await addSprintReview(sprintNum, currentMember.id, reviewWellBody.trim(), 'well');
+                        setReviewWellBody('');
+                        setWellAddOpen(false);
+                        loadReviews();
+                      }}
+                    >
+                      Post
+                    </button>
+                  </div>
+                </>
+              ) : null}
               <ul className="sprint-review-list sprint-review-list--compact">
                 {reviews
                   .filter(r => r.reviewKind !== 'improve')
@@ -568,30 +639,45 @@ export default function ScrumPage({ currentMember, members }: Props) {
               </ul>
             </div>
             <div className="sprint-retro-column">
-              <h3 className="sprint-retro-column-title">What can we improve on</h3>
-              <textarea
-                className="sprint-review-textarea"
-                rows={3}
-                value={reviewImproveBody}
-                onChange={e => setReviewImproveBody(e.target.value)}
-                placeholder="Blockers, lessons, and ideas for next sprint…"
-                disabled={!currentMember}
-              />
-              <div className="sprint-review-compose-actions">
+              <div className="sprint-retro-column-head">
+                <h3 className="sprint-retro-column-title">What can we improve on</h3>
                 <button
                   type="button"
-                  className="btn btn-primary btn-sm"
-                  disabled={!currentMember || !reviewImproveBody.trim()}
-                  onClick={async () => {
-                    if (!currentMember || !reviewImproveBody.trim()) return;
-                    await addSprintReview(sprintNum, currentMember.id, reviewImproveBody.trim(), 'improve');
-                    setReviewImproveBody('');
-                    loadReviews();
-                  }}
+                  className="btn btn-secondary btn-sm"
+                  onClick={() => setImproveAddOpen(o => !o)}
+                  aria-expanded={improveAddOpen}
                 >
-                  Post
+                  {improveAddOpen ? 'Cancel' : 'Add'}
                 </button>
               </div>
+              {improveAddOpen ? (
+                <>
+                  <textarea
+                    className="sprint-review-textarea"
+                    rows={3}
+                    value={reviewImproveBody}
+                    onChange={e => setReviewImproveBody(e.target.value)}
+                    placeholder="Blockers, lessons, and ideas for next sprint…"
+                    disabled={!currentMember}
+                  />
+                  <div className="sprint-review-compose-actions">
+                    <button
+                      type="button"
+                      className="btn btn-primary btn-sm"
+                      disabled={!currentMember || !reviewImproveBody.trim()}
+                      onClick={async () => {
+                        if (!currentMember || !reviewImproveBody.trim()) return;
+                        await addSprintReview(sprintNum, currentMember.id, reviewImproveBody.trim(), 'improve');
+                        setReviewImproveBody('');
+                        setImproveAddOpen(false);
+                        loadReviews();
+                      }}
+                    >
+                      Post
+                    </button>
+                  </div>
+                </>
+              ) : null}
               <ul className="sprint-review-list sprint-review-list--compact">
                 {reviews
                   .filter(r => r.reviewKind === 'improve')
@@ -638,9 +724,124 @@ export default function ScrumPage({ currentMember, members }: Props) {
               </ul>
             </div>
           </div>
-          {reviews.length === 0 ? <p className="sprint-review-empty">No retrospective notes for this sprint yet.</p> : null}
         </div>
       </section>
+
+      {planChoiceOpen && (
+        <div className="modal-overlay">
+          <div className="modal modal-lg">
+            <div className="modal-header">
+              <span className="modal-title">Plan sprints</span>
+              <button type="button" className="btn btn-ghost btn-sm" onClick={() => setPlanChoiceOpen(false)}>
+                Close
+              </button>
+            </div>
+            <div className="modal-body">
+              <p className="text-sm text-muted mb-3">
+                Choose how to plan upcoming work. <strong>AI plan</strong> uses the same guided import as Tasks → Import (describe backlog, preview, apply).{' '}
+                <strong>Manual plan</strong> lets you set a goal for every sprint and add tasks to each sprint in one place.
+              </p>
+              <div className="flex gap-2 flex-wrap">
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={() => {
+                    setPlanChoiceOpen(false);
+                    navigate('/tasks', { state: { openBulkImport: true } });
+                  }}
+                >
+                  AI plan (open import)
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => {
+                    setPlanChoiceOpen(false);
+                    setPlanManualOpen(true);
+                  }}
+                >
+                  Manual plan
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {planManualOpen && (
+        <div className="modal-overlay">
+          <div className="modal modal-lg sprint-plan-manual-modal">
+            <div className="modal-header">
+              <span className="modal-title">Manual sprint planning</span>
+              <button type="button" className="btn btn-ghost btn-sm" onClick={() => setPlanManualOpen(false)}>
+                Close
+              </button>
+            </div>
+            <div className="modal-body sprint-plan-manual-body">
+              <p className="text-sm text-muted mb-3">
+                Edit goals per sprint and open or create tasks. Saving updates sprint goals only; task changes are saved from the task editor.
+              </p>
+              <div className="sprint-plan-manual-list">
+                {Array.from({ length: maxSprint }, (_, i) => i + 1).map(sn => {
+                  const adminDue = settings?.sprintDeadlines?.[sn - 1]?.trim();
+                  const g = sprintGoals.find(x => x.sprintNumber === sn);
+                  const dueLabel = formatDue(g?.sprintDueDate) || (adminDue ? formatDue(adminDue) : null);
+                  const sprintTasksList = tasks.filter(t => t.sprintNumber === sn);
+                  return (
+                    <div key={sn} className="sprint-plan-manual-block card">
+                      <div className="sprint-plan-manual-block-head">
+                        <h3 className="sprint-plan-manual-sprint-title">Sprint {sn}</h3>
+                        {dueLabel ? (
+                          <span className="text-xs text-muted">
+                            Due <time dateTime={(g?.sprintDueDate?.split('T')[0] ?? adminDue) || undefined}>{dueLabel}</time>
+                          </span>
+                        ) : (
+                          <span className="text-xs text-muted">No deadline</span>
+                        )}
+                      </div>
+                      <label className="sprint-plan-manual-goal-label">Sprint goal</label>
+                      <textarea
+                        className="sprint-review-textarea"
+                        rows={2}
+                        value={manualGoalDrafts[sn] ?? ''}
+                        onChange={e => setManualGoalDrafts(prev => ({ ...prev, [sn]: e.target.value }))}
+                        placeholder="What does the team aim to deliver?"
+                      />
+                      <div className="sprint-plan-manual-tasks">
+                        <span className="text-sm font-medium">Tasks in this sprint</span>
+                        <ul className="sprint-plan-manual-task-list">
+                          {sprintTasksList.length === 0 ? (
+                            <li className="text-muted text-sm">No tasks yet</li>
+                          ) : (
+                            sprintTasksList.map(t => (
+                              <li key={t.id}>
+                                <button type="button" className="btn btn-ghost btn-sm sprint-plan-manual-task-link" onClick={() => setEditingTask(t)}>
+                                  {t.name}
+                                </button>
+                              </li>
+                            ))
+                          )}
+                        </ul>
+                        <button type="button" className="btn btn-secondary btn-sm" onClick={() => openNewTaskForSprint(sn)}>
+                          + Add task to sprint {sn}
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button type="button" className="btn btn-secondary" onClick={() => setPlanManualOpen(false)}>
+                Cancel
+              </button>
+              <button type="button" className="btn btn-primary" disabled={savingManualGoals} onClick={() => void saveManualGoals()}>
+                {savingManualGoals ? 'Saving…' : 'Save sprint goals'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {ctxMenu && (
         <div className="sprint-ctx-menu" style={{ left: menuPos.left, top: menuPos.top }} role="menu">
