@@ -91,7 +91,9 @@ export function MemberAvatarChip({ member, selected, onClick }: MemberAvatarChip
       aria-label={`Filter by ${member.name}`}
       aria-pressed={selected}
     >
-      <span className="tasks-filter-member-chip-inner">{initial}</span>
+      <span className="tasks-filter-member-chip-inner" style={{ background: bg, color: '#fff' }}>
+        {initial}
+      </span>
     </button>
   );
 }

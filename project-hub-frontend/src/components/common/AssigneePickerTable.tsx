@@ -1,4 +1,3 @@
-import type { CSSProperties } from 'react';
 import type { GroupMember } from '../../types';
 import { assignableMembers } from '../../lib/admin';
 import { memberChipColor } from '../Tasks/TaskFilters';
@@ -30,7 +29,7 @@ export default function AssigneePickerTable({ members, selectedIds, onToggle, di
             onClick={() => onToggle(m.id)}
           >
             <span className="task-assign-picker-cell task-assign-picker-cell--icon">
-              <span className="task-assign-picker-icon-circle" style={{ '--assign-icon-bg': c } as CSSProperties}>
+              <span className="task-assign-picker-icon-circle" style={{ backgroundColor: c, color: '#fff' }}>
                 {initial}
               </span>
             </span>

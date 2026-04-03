@@ -2388,6 +2388,13 @@ tr:hover td { background: var(--surface-hover); }
   justify-content: flex-end;
 }
 
+/* Keep rating controls above task title in flex layouts (avoids stray hit-box overlap). */
+.sprint-game-deck {
+  position: relative;
+  z-index: 2;
+  isolation: isolate;
+}
+
 .task-assign-popover--table {
   min-width: 260px;
   max-width: min(360px, 94vw);

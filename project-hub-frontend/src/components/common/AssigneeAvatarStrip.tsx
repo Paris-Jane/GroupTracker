@@ -1,4 +1,3 @@
-import type { CSSProperties } from 'react';
 import type { GroupMember } from '../../types';
 import { assignableMembers } from '../../lib/admin';
 import { memberChipColor } from '../Tasks/TaskFilters';
@@ -23,13 +22,14 @@ export default function AssigneeAvatarStrip({ members, selectedIds, onToggle }: 
             key={m.id}
             type="button"
             className={`task-assign-icon-btn${on ? ' task-assign-icon-btn--on' : ''}`}
-            style={{ '--assign-icon-bg': c } as CSSProperties}
             title={m.name}
             aria-label={m.name}
             aria-pressed={on}
             onClick={() => onToggle(m.id)}
           >
-            <span className="task-assign-icon-circle">{initial}</span>
+            <span className="task-assign-icon-circle" style={{ backgroundColor: c, color: '#fff' }}>
+              {initial}
+            </span>
           </button>
         );
       })}

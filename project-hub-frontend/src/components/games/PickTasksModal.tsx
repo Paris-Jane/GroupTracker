@@ -78,6 +78,14 @@ export default function PickTasksModal({
   const sortedTasksRef = useRef(sortedTasks);
   sortedTasksRef.current = sortedTasks;
 
+  const effectiveDraft = useMemo(() => {
+    const out: Record<number, number | ''> = { ...draft };
+    for (const t of sortedTasks) {
+      if (!(t.id in out)) out[t.id] = '';
+    }
+    return out;
+  }, [draft, sortedTasks]);
+
   useEffect(() => {
     if (!open) {
       setFlow('menu');
@@ -147,7 +155,7 @@ export default function PickTasksModal({
     setSaving(true);
     try {
       const entries = sortedTasks.map(t => {
-        const v = draft[t.id];
+        const v = effectiveDraft[t.id];
         const rating = v === '' || v === undefined ? null : Number(v);
         return {
           taskItemId: t.id,
@@ -197,20 +205,23 @@ export default function PickTasksModal({
         <p className="text-sm text-muted">Sign in to rank tasks.</p>
       ) : sortedTasks.length === 0 ? (
         <p className="text-sm text-muted">No tasks in this sprint yet.</p>
-      ) : draftLoading && Object.keys(draft).length === 0 ? (
-        <p className="text-sm text-muted">Loading your rankings…</p>
       ) : (
         <>
+          {draftLoading ? (
+            <p className="text-sm text-muted mb-2" aria-live="polite">
+              Loading saved ratings…
+            </p>
+          ) : null}
           <ul className="sprint-game-rank-list">
             {sortedTasks.map(t => (
               <li key={t.id} className="sprint-game-rank-row card">
                 <span className="sprint-game-rank-task-name">{t.name}</span>
-                <div className="sprint-pick-comfort-row" aria-label="Comfort level">
+                <div className="sprint-pick-comfort-row sprint-game-deck" aria-label="Comfort level">
                   {COMFORT_CARDS.map(n => (
                     <button
                       key={n}
                       type="button"
-                      className={`btn btn-secondary btn-sm sprint-poker-card${draft[t.id] === n ? ' btn-primary' : ''}`}
+                      className={`btn btn-secondary btn-sm sprint-poker-card${effectiveDraft[t.id] === n ? ' btn-primary' : ''}`}
                       onClick={() => setDraft(d => ({ ...d, [t.id]: n }))}
                     >
                       {n}
