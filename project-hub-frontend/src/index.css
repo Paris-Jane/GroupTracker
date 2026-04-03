@@ -2089,7 +2089,6 @@ tr:hover td { background: var(--surface-hover); }
   visibility: hidden;
 }
 
-.task-row-wrap:hover .task-row-select,
 .task-row-wrap--select-armed .task-row-select {
   visibility: visible;
 }
@@ -2144,6 +2143,32 @@ tr:hover td { background: var(--surface-hover); }
 
 .tasks-bulk-add-menu-item:hover {
   background: color-mix(in srgb, var(--text-muted) 12%, transparent);
+}
+
+.tasks-bulk-mode-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px 16px;
+  padding: 10px 14px;
+  margin-bottom: 12px;
+}
+
+.tasks-bulk-mode-bar-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  margin: 0;
+}
+
+.tasks-bulk-mode-bar-label input {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
 }
 
 .bulk-import-prompt-pre {
@@ -2353,6 +2378,105 @@ tr:hover td { background: var(--surface-hover); }
   min-width: 36px;
 }
 
+.sprint-pick-comfort-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+  justify-content: flex-end;
+}
+
+.task-assign-popover--table {
+  min-width: 260px;
+  max-width: min(360px, 94vw);
+  max-height: min(320px, 50vh);
+  overflow-y: auto;
+}
+
+.task-assign-picker-table {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.task-assign-picker-row {
+  display: grid;
+  grid-template-columns: 40px 1fr minmax(72px, auto);
+  align-items: center;
+  gap: 10px 12px;
+  width: 100%;
+  text-align: left;
+  padding: 8px 10px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  background: transparent;
+  font-size: 13px;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.task-assign-picker-row:hover {
+  background: var(--surface-hover);
+}
+
+.task-assign-picker-row--on {
+  border-color: color-mix(in srgb, var(--primary) 45%, var(--border));
+  background: color-mix(in srgb, var(--primary) 8%, var(--surface));
+}
+
+.task-assign-picker-cell--icon {
+  display: flex;
+  justify-content: center;
+}
+
+.task-assign-picker-icon-circle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--assign-icon-bg, var(--text-muted));
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.task-assign-picker-icon-muted {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.task-assign-picker-cell--name {
+  font-weight: 500;
+  min-width: 0;
+}
+
+.task-assign-picker-cell--role {
+  text-align: right;
+}
+
+.task-row-assign-admin-tag {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  background: color-mix(in srgb, var(--text-muted) 18%, var(--surface));
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+}
+
+.sprint-b-assign-admin-tag {
+  flex-shrink: 0;
+}
+
 .tasks-filter-row-secondary {
   margin-top: 18px;
   padding-top: 18px;
@@ -2365,10 +2489,10 @@ tr:hover td { background: var(--surface-hover); }
 }
 
 .tasks-filter-groups {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
-  gap: 20px 28px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  align-items: end;
+  gap: 18px 22px;
   flex: 1;
   min-width: 0;
 }
@@ -2381,8 +2505,11 @@ tr:hover td { background: var(--surface-hover); }
 }
 
 .tasks-filter-group--assignees {
-  flex: 1 1 220px;
-  max-width: 100%;
+  grid-column: 1 / -1;
+}
+
+.tasks-filter-group--sort {
+  grid-column: span 1;
 }
 
 .tasks-filter-group-label {
@@ -2485,6 +2612,7 @@ tr:hover td { background: var(--surface-hover); }
   flex-wrap: wrap;
   align-items: center;
   gap: 8px;
+  padding: 4px 0;
 }
 
 .tasks-filter-member-chip {
@@ -3477,15 +3605,23 @@ tr:hover td { background: var(--surface-hover); }
   margin-bottom: 16px;
 }
 
-.sprint-retro-two-col--boxed {
-  gap: 20px;
-}
-
-.sprint-retro-box {
+.sprint-retro-outer {
   background: #fff;
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow);
+  padding: 20px 22px;
+  min-width: 0;
+}
+
+.sprint-retro-two-col--boxed {
+  gap: 20px;
+}
+
+.sprint-retro-subbox {
+  background: color-mix(in srgb, var(--surface) 88%, var(--border));
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
   padding: 16px 18px;
   min-width: 0;
 }

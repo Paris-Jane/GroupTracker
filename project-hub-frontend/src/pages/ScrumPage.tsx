@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, useCallback, type CSSProperties } from 'react';
+import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   getTasks,
@@ -33,7 +33,8 @@ import TaskFormModal from '../components/Tasks/TaskFormModal';
 import ConfirmDialog from '../components/common/ConfirmDialog';
 import PickTasksModal from '../components/games/PickTasksModal';
 import PlanningPokerModal from '../components/games/PlanningPokerModal';
-import { memberChipColor } from '../components/Tasks/TaskFilters';
+import AssigneePickerTable from '../components/common/AssigneePickerTable';
+import { isAdminUser } from '../lib/admin';
 
 interface Props {
   currentMember: GroupMember | null;
@@ -129,15 +130,25 @@ function SprintBoardCard({
         <div className="sprint-b-card-assign-inner">
           {task.assignments.length > 0 ? (
             <div className="sprint-b-card-avatars">
-              {task.assignments.map(a => (
-                <Avatar
-                  key={a.id}
-                  initial={a.memberAvatarInitial}
-                  color={a.memberColor}
-                  size="sm"
-                  name={a.memberName}
-                />
-              ))}
+              {task.assignments.map(a => {
+                const mem = members.find(m => m.id === a.groupMemberId);
+                if (mem && isAdminUser(mem)) {
+                  return (
+                    <span key={a.id} className="task-row-assign-admin-tag sprint-b-assign-admin-tag" title={a.memberName}>
+                      Admin
+                    </span>
+                  );
+                }
+                return (
+                  <Avatar
+                    key={a.id}
+                    initial={a.memberAvatarInitial}
+                    color={a.memberColor}
+                    size="sm"
+                    name={a.memberName}
+                  />
+                );
+              })}
             </div>
           ) : null}
           <button
@@ -151,29 +162,13 @@ function SprintBoardCard({
           </button>
         </div>
         {assignOpen && (
-          <div className="task-assign-popover task-assign-popover--icons sprint-b-assign-popover" role="dialog" aria-label="Choose assignees">
+          <div className="task-assign-popover task-assign-popover--table sprint-b-assign-popover" role="dialog" aria-label="Choose assignees">
             <p className="task-assign-popover-hint">Select people</p>
-            <div className="task-assign-popover-avatars">
-              {members.map(m => {
-                const on = assignedIds.includes(m.id);
-                const c = memberChipColor(m);
-                const initial = (m.avatarInitial ?? m.name.charAt(0) ?? '?').toUpperCase();
-                return (
-                  <button
-                    key={m.id}
-                    type="button"
-                    className={`task-assign-icon-btn${on ? ' task-assign-icon-btn--on' : ''}`}
-                    style={{ '--assign-icon-bg': c } as CSSProperties}
-                    title={m.name}
-                    aria-label={m.name}
-                    aria-pressed={on}
-                    onClick={() => void toggleAssignee(m.id)}
-                  >
-                    <span className="task-assign-icon-circle">{initial}</span>
-                  </button>
-                );
-              })}
-            </div>
+            <AssigneePickerTable
+              members={members}
+              selectedIds={assignedIds}
+              onToggle={id => void toggleAssignee(id)}
+            />
           </div>
         )}
       </div>
@@ -566,8 +561,9 @@ export default function ScrumPage({ currentMember, members }: Props) {
           <div className="sprint-board-toolbar sprint-retro-toolbar">
             <h2 className="sprint-board-toolbar-title">Sprint retrospective</h2>
           </div>
-          <div className="sprint-retro-two-col sprint-retro-two-col--boxed">
-            <div className="sprint-retro-box sprint-retro-column">
+          <div className="sprint-retro-outer card">
+            <div className="sprint-retro-two-col sprint-retro-two-col--boxed">
+              <div className="sprint-retro-subbox sprint-retro-column">
               <div className="sprint-retro-column-head">
                 <h3 className="sprint-retro-column-title">What went well</h3>
                 <button
@@ -652,7 +648,7 @@ export default function ScrumPage({ currentMember, members }: Props) {
                   })}
               </ul>
             </div>
-            <div className="sprint-retro-box sprint-retro-column">
+            <div className="sprint-retro-subbox sprint-retro-column">
               <div className="sprint-retro-column-head">
                 <h3 className="sprint-retro-column-title">What can we improve on</h3>
                 <button
@@ -736,6 +732,7 @@ export default function ScrumPage({ currentMember, members }: Props) {
                     );
                   })}
               </ul>
+            </div>
             </div>
           </div>
         </div>

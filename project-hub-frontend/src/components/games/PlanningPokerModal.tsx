@@ -63,7 +63,6 @@ export default function PlanningPokerModal({
 }) {
   const [flow, setFlow] = useState<Flow>('menu');
   const [draft, setDraft] = useState<Record<number, number | ''>>({});
-  const [busy, setBusy] = useState(false);
   const [saveError, setSaveError] = useState('');
   const [resultsRows, setResultsRows] = useState<ReturnType<typeof aggregatePokerRows>>([]);
   const [resultsLoading, setResultsLoading] = useState(false);
@@ -72,8 +71,12 @@ export default function PlanningPokerModal({
     () => [...sprintTasks].sort((a, b) => a.name.localeCompare(b.name)),
     [sprintTasks],
   );
+  const sprintTaskIdsKey = useMemo(() => sortedTasks.map(t => t.id).join(','), [sortedTasks]);
   const taskOrder = useMemo(() => sortedTasks.map(t => t.id), [sortedTasks]);
   const taskMap = useMemo(() => new Map(sprintTasks.map(t => [t.id, t])), [sprintTasks]);
+
+  const [draftLoading, setDraftLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (!open) {
@@ -81,13 +84,15 @@ export default function PlanningPokerModal({
       setDraft({});
       setSaveError('');
       setResultsRows([]);
+      setDraftLoading(false);
+      setSaving(false);
     }
   }, [open]);
 
   useEffect(() => {
     if (!open || flow !== 'play' || !currentMemberId) return;
     let cancelled = false;
-    setBusy(true);
+    setDraftLoading(true);
     fetchSprintPokerVotesForMember(sprintNumber, currentMemberId)
       .then(m => {
         if (cancelled) return;
@@ -99,12 +104,12 @@ export default function PlanningPokerModal({
         setDraft(next);
       })
       .finally(() => {
-        if (!cancelled) setBusy(false);
+        if (!cancelled) setDraftLoading(false);
       });
     return () => {
       cancelled = true;
     };
-  }, [open, flow, sprintNumber, currentMemberId, sortedTasks]);
+  }, [open, flow, sprintNumber, currentMemberId, sprintTaskIdsKey]);
 
   const loadResults = useCallback(async () => {
     setResultsLoading(true);
@@ -129,7 +134,7 @@ export default function PlanningPokerModal({
   const saveVotes = async () => {
     if (!currentMemberId) return;
     setSaveError('');
-    setBusy(true);
+    setSaving(true);
     try {
       const entries = sortedTasks.map(t => {
         const v = draft[t.id];
@@ -144,7 +149,7 @@ export default function PlanningPokerModal({
     } catch {
       setSaveError('Could not save. Check your connection and try again.');
     } finally {
-      setBusy(false);
+      setSaving(false);
     }
   };
 
@@ -182,7 +187,7 @@ export default function PlanningPokerModal({
         <p className="text-sm text-muted">Sign in to play poker.</p>
       ) : sortedTasks.length === 0 ? (
         <p className="text-sm text-muted">No tasks in this sprint yet.</p>
-      ) : busy && Object.keys(draft).length === 0 ? (
+      ) : draftLoading && Object.keys(draft).length === 0 ? (
         <p className="text-sm text-muted">Loading your estimates…</p>
       ) : (
         <>
@@ -197,7 +202,7 @@ export default function PlanningPokerModal({
                       type="button"
                       className={`btn btn-secondary btn-sm sprint-poker-card${draft[t.id] === v ? ' btn-primary' : ''}`}
                       onClick={() => setDraft(d => ({ ...d, [t.id]: v }))}
-                      disabled={busy}
+                      disabled={draftLoading}
                     >
                       {v}
                     </button>
@@ -206,7 +211,7 @@ export default function PlanningPokerModal({
                     type="button"
                     className="btn btn-ghost btn-sm"
                     onClick={() => setDraft(d => ({ ...d, [t.id]: '' }))}
-                    disabled={busy}
+                    disabled={draftLoading}
                   >
                     Clear
                   </button>
@@ -216,8 +221,8 @@ export default function PlanningPokerModal({
           </ul>
           {saveError ? <div className="form-error mt-2">{saveError}</div> : null}
           <div className="mt-3">
-            <button type="button" className="btn btn-primary" disabled={busy} onClick={() => void saveVotes()}>
-              {busy ? 'Saving…' : 'Save estimates'}
+            <button type="button" className="btn btn-primary" disabled={draftLoading || saving} onClick={() => void saveVotes()}>
+              {saving ? 'Saving…' : 'Save estimates'}
             </button>
           </div>
         </>
@@ -271,16 +276,16 @@ export default function PlanningPokerModal({
                       <button
                         type="button"
                         className="btn btn-primary btn-sm"
-                        disabled={busy}
+                        disabled={saving}
                         onClick={async () => {
                           const m = row.mode;
                           if (m == null) return;
-                          setBusy(true);
+                          setSaving(true);
                           try {
                             await pokerApplyEvaluation(row.taskId, m, currentMemberId ?? undefined);
                             onTasksChanged();
                           } finally {
-                            setBusy(false);
+                            setSaving(false);
                           }
                         }}
                       >
@@ -292,14 +297,14 @@ export default function PlanningPokerModal({
                         key={mid}
                         type="button"
                         className="btn btn-secondary btn-sm"
-                        disabled={busy}
+                        disabled={saving}
                         onClick={async () => {
-                          setBusy(true);
+                          setSaving(true);
                           try {
                             await assignTask(row.taskId, [mid], currentMemberId ?? undefined);
                             onTasksChanged();
                           } finally {
-                            setBusy(false);
+                            setSaving(false);
                           }
                         }}
                       >

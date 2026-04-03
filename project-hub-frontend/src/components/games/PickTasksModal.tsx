@@ -10,7 +10,7 @@ import {
 
 type Flow = 'menu' | 'rank' | 'results';
 
-const RANK_OPTIONS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10] as const;
+const COMFORT_CARDS = [1, 2, 3, 4, 5] as const;
 
 function aggregatePickRows(
   queue: number[],
@@ -62,7 +62,8 @@ export default function PickTasksModal({
 }) {
   const [flow, setFlow] = useState<Flow>('menu');
   const [draft, setDraft] = useState<Record<number, number | ''>>({});
-  const [busy, setBusy] = useState(false);
+  const [draftLoading, setDraftLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
   const [resultsRows, setResultsRows] = useState<ReturnType<typeof aggregatePickRows>>([]);
   const [resultsLoading, setResultsLoading] = useState(false);
@@ -71,6 +72,7 @@ export default function PickTasksModal({
     () => [...sprintTasks].sort((a, b) => a.name.localeCompare(b.name)),
     [sprintTasks],
   );
+  const sprintTaskIdsKey = useMemo(() => sortedTasks.map(t => t.id).join(','), [sortedTasks]);
   const taskOrder = useMemo(() => sortedTasks.map(t => t.id), [sortedTasks]);
   const taskMap = useMemo(() => new Map(sprintTasks.map(t => [t.id, t])), [sprintTasks]);
 
@@ -80,6 +82,8 @@ export default function PickTasksModal({
       setDraft({});
       setSaveError('');
       setResultsRows([]);
+      setDraftLoading(false);
+      setSaving(false);
       return;
     }
   }, [open]);
@@ -87,7 +91,7 @@ export default function PickTasksModal({
   useEffect(() => {
     if (!open || flow !== 'rank' || !currentMemberId) return;
     let cancelled = false;
-    setBusy(true);
+    setDraftLoading(true);
     fetchSprintPickRatingsForMember(sprintNumber, currentMemberId)
       .then(m => {
         if (cancelled) return;
@@ -99,12 +103,12 @@ export default function PickTasksModal({
         setDraft(next);
       })
       .finally(() => {
-        if (!cancelled) setBusy(false);
+        if (!cancelled) setDraftLoading(false);
       });
     return () => {
       cancelled = true;
     };
-  }, [open, flow, sprintNumber, currentMemberId, sortedTasks]);
+  }, [open, flow, sprintNumber, currentMemberId, sprintTaskIdsKey]);
 
   const loadResults = useCallback(async () => {
     setResultsLoading(true);
@@ -129,7 +133,7 @@ export default function PickTasksModal({
   const saveRankings = async () => {
     if (!currentMemberId) return;
     setSaveError('');
-    setBusy(true);
+    setSaving(true);
     try {
       const entries = sortedTasks.map(t => {
         const v = draft[t.id];
@@ -144,7 +148,7 @@ export default function PickTasksModal({
     } catch {
       setSaveError('Could not save. Check your connection and try again.');
     } finally {
-      setBusy(false);
+      setSaving(false);
     }
   };
 
@@ -175,13 +179,14 @@ export default function PickTasksModal({
         </button>
       </div>
       <p className="text-sm text-muted mb-3">
-        How comfortable are you taking each task? (1 = low, 10 = high). Save when done — reopen anytime to edit.
+        How comfortable are you taking each task? Tap a card (1 = low, 5 = high). Save when done — reopen anytime to
+        edit.
       </p>
       {!currentMemberId ? (
         <p className="text-sm text-muted">Sign in to rank tasks.</p>
       ) : sortedTasks.length === 0 ? (
         <p className="text-sm text-muted">No tasks in this sprint yet.</p>
-      ) : busy && Object.keys(draft).length === 0 ? (
+      ) : draftLoading && Object.keys(draft).length === 0 ? (
         <p className="text-sm text-muted">Loading your rankings…</p>
       ) : (
         <>
@@ -189,32 +194,34 @@ export default function PickTasksModal({
             {sortedTasks.map(t => (
               <li key={t.id} className="sprint-game-rank-row card">
                 <span className="sprint-game-rank-task-name">{t.name}</span>
-                <label className="sprint-game-rank-label text-xs text-muted">
-                  Comfort (1–10)
-                  <select
-                    className="select-compact mt-1"
-                    value={draft[t.id] === '' || draft[t.id] === undefined ? '' : String(draft[t.id])}
-                    onChange={e => {
-                      const v = e.target.value;
-                      setDraft(d => ({ ...d, [t.id]: v === '' ? '' : Number(v) }));
-                    }}
-                    disabled={busy}
+                <div className="sprint-pick-comfort-row" aria-label="Comfort level">
+                  {COMFORT_CARDS.map(n => (
+                    <button
+                      key={n}
+                      type="button"
+                      className={`btn btn-secondary btn-sm sprint-poker-card${draft[t.id] === n ? ' btn-primary' : ''}`}
+                      onClick={() => setDraft(d => ({ ...d, [t.id]: n }))}
+                      disabled={draftLoading}
+                    >
+                      {n}
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-sm"
+                    onClick={() => setDraft(d => ({ ...d, [t.id]: '' }))}
+                    disabled={draftLoading}
                   >
-                    <option value="">—</option>
-                    {RANK_OPTIONS.map(n => (
-                      <option key={n} value={n}>
-                        {n}
-                      </option>
-                    ))}
-                  </select>
-                </label>
+                    Clear
+                  </button>
+                </div>
               </li>
             ))}
           </ul>
           {saveError ? <div className="form-error mt-2">{saveError}</div> : null}
           <div className="mt-3">
-            <button type="button" className="btn btn-primary" disabled={busy} onClick={() => void saveRankings()}>
-              {busy ? 'Saving…' : 'Save rankings'}
+            <button type="button" className="btn btn-primary" disabled={draftLoading || saving} onClick={() => void saveRankings()}>
+              {saving ? 'Saving…' : 'Save rankings'}
             </button>
           </div>
         </>
@@ -246,7 +253,7 @@ export default function PickTasksModal({
                 <div className="game-results-card-head">
                   <span className="font-medium">{name}</span>
                   {row.maxRating != null && row.topMemberIds.length > 0 ? (
-                    <span className="text-xs game-results-top-badge">Top: {row.maxRating}/10</span>
+                    <span className="text-xs game-results-top-badge">Top: {row.maxRating}/5</span>
                   ) : null}
                 </div>
                 <div className="game-results-grid">
@@ -267,14 +274,14 @@ export default function PickTasksModal({
                         key={mid}
                         type="button"
                         className="btn btn-primary btn-sm"
-                        disabled={busy}
+                        disabled={saving}
                         onClick={async () => {
-                          setBusy(true);
+                          setSaving(true);
                           try {
                             await assignTask(row.taskId, [mid], currentMemberId ?? undefined);
                             onTasksChanged?.();
                           } finally {
-                            setBusy(false);
+                            setSaving(false);
                           }
                         }}
                       >

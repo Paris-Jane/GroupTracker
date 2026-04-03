@@ -36,7 +36,7 @@ const CLASS_LABELS: Record<ClassLinkCategory, string> = {
   PM401: '401 Project',
   Hilton413: '413 Hilton',
   Cyber414: '414 Cyber',
-  MLR455: '455 Machine',
+  MLR455: '455 ML',
 };
 
 type ManageScope =

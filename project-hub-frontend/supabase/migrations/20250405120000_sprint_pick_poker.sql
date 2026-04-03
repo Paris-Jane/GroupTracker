@@ -5,7 +5,7 @@ create table if not exists public.sprint_pick_ratings (
   sprint_number int not null,
   task_item_id bigint not null references public.task_items (id) on delete cascade,
   group_member_id bigint not null references public.group_members (id) on delete cascade,
-  rating int not null check (rating >= 1 and rating <= 10),
+  rating int not null check (rating >= 1 and rating <= 5),
   updated_at timestamptz not null default now(),
   unique (sprint_number, task_item_id, group_member_id)
 );

@@ -1508,23 +1508,21 @@ export async function saveSprintPickRatings(
   entries: { taskItemId: number; rating: number | null }[],
 ): Promise<void> {
   for (const { taskItemId, rating } of entries) {
-    await supabase
+    const { error: delErr } = await supabase
       .from('sprint_pick_ratings')
       .delete()
       .eq('sprint_number', sprintNumber)
       .eq('task_item_id', taskItemId)
       .eq('group_member_id', memberId);
-    if (rating != null && rating >= 1 && rating <= 10) {
-      const { error } = await supabase.from('sprint_pick_ratings').upsert(
-        {
-          sprint_number: sprintNumber,
-          task_item_id: taskItemId,
-          group_member_id: memberId,
-          rating,
-          updated_at: new Date().toISOString(),
-        },
-        { onConflict: 'sprint_number,task_item_id,group_member_id' },
-      );
+    if (delErr) err(delErr, 'Failed to clear pick rating');
+    if (rating != null && rating >= 1 && rating <= 5) {
+      const { error } = await supabase.from('sprint_pick_ratings').insert({
+        sprint_number: sprintNumber,
+        task_item_id: taskItemId,
+        group_member_id: memberId,
+        rating,
+        updated_at: new Date().toISOString(),
+      });
       if (error) err(error, 'Failed to save pick rating');
     }
   }
@@ -1564,23 +1562,21 @@ export async function saveSprintPokerVotes(
   entries: { taskItemId: number; value: number | null }[],
 ): Promise<void> {
   for (const { taskItemId, value } of entries) {
-    await supabase
+    const { error: delErr } = await supabase
       .from('sprint_poker_votes')
       .delete()
       .eq('sprint_number', sprintNumber)
       .eq('task_item_id', taskItemId)
       .eq('group_member_id', memberId);
+    if (delErr) err(delErr, 'Failed to clear poker vote');
     if (value != null && (SPRINT_POKER_VALUES as readonly number[]).includes(value)) {
-      const { error } = await supabase.from('sprint_poker_votes').upsert(
-        {
-          sprint_number: sprintNumber,
-          task_item_id: taskItemId,
-          group_member_id: memberId,
-          value,
-          updated_at: new Date().toISOString(),
-        },
-        { onConflict: 'sprint_number,task_item_id,group_member_id' },
-      );
+      const { error } = await supabase.from('sprint_poker_votes').insert({
+        sprint_number: sprintNumber,
+        task_item_id: taskItemId,
+        group_member_id: memberId,
+        value,
+        updated_at: new Date().toISOString(),
+      });
       if (error) err(error, 'Failed to save poker vote');
     }
   }

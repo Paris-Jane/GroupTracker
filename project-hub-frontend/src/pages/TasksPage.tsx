@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo, useRef, useCallback, type CSSProperties } from 'react';
+import { useEffect, useState, useMemo, useRef, useCallback } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
   getTasks,
@@ -12,6 +12,8 @@ import {
 } from '../api/client';
 import type { TaskItem, GroupMember, TaskStatus, TaskPriority, CreateTaskDto } from '../types';
 import Avatar from '../components/common/Avatar';
+import AssigneePickerTable from '../components/common/AssigneePickerTable';
+import { isAdminUser } from '../lib/admin';
 import ConfirmDialog from '../components/common/ConfirmDialog';
 import BulkImportModal from '../components/Tasks/BulkImportModal';
 import TaskFormModal from '../components/Tasks/TaskFormModal';
@@ -22,7 +24,6 @@ import {
   type TaskColumnKey,
   ALL_TASK_COLUMN_KEYS,
   DEFAULT_TASK_COLUMN_KEYS,
-  memberChipColor,
 } from '../components/Tasks/TaskFilters';
 
 interface Props {
@@ -249,15 +250,25 @@ function TaskRow({
                 aria-label="Edit assignees"
               >
                 <div className="task-row-avatar-stack">
-                  {task.assignments.map(a => (
-                    <Avatar
-                      key={a.id}
-                      initial={a.memberAvatarInitial}
-                      color={a.memberColor}
-                      size="sm"
-                      name={a.memberName}
-                    />
-                  ))}
+                  {task.assignments.map(a => {
+                    const mem = members.find(m => m.id === a.groupMemberId);
+                    if (mem && isAdminUser(mem)) {
+                      return (
+                        <span key={a.id} className="task-row-assign-admin-tag" title={a.memberName}>
+                          Admin
+                        </span>
+                      );
+                    }
+                    return (
+                      <Avatar
+                        key={a.id}
+                        initial={a.memberAvatarInitial}
+                        color={a.memberColor}
+                        size="sm"
+                        name={a.memberName}
+                      />
+                    );
+                  })}
                 </div>
               </button>
             ) : (
@@ -272,29 +283,13 @@ function TaskRow({
               </button>
             )}
             {assignOpen && (
-              <div className="task-assign-popover task-assign-popover--icons" role="dialog" aria-label="Choose assignees">
+              <div className="task-assign-popover task-assign-popover--table" role="dialog" aria-label="Choose assignees">
                 <p className="task-assign-popover-hint">Select people</p>
-                <div className="task-assign-popover-avatars">
-                  {members.map(m => {
-                    const on = assignedIds.includes(m.id);
-                    const c = memberChipColor(m);
-                    const initial = (m.avatarInitial ?? m.name.charAt(0) ?? '?').toUpperCase();
-                    return (
-                      <button
-                        key={m.id}
-                        type="button"
-                        className={`task-assign-icon-btn${on ? ' task-assign-icon-btn--on' : ''}`}
-                        style={{ '--assign-icon-bg': c } as CSSProperties}
-                        title={m.name}
-                        aria-label={m.name}
-                        aria-pressed={on}
-                        onClick={() => void toggleAssignee(m.id)}
-                      >
-                        <span className="task-assign-icon-circle">{initial}</span>
-                      </button>
-                    );
-                  })}
-                </div>
+                <AssigneePickerTable
+                  members={members}
+                  selectedIds={assignedIds}
+                  onToggle={id => void toggleAssignee(id)}
+                />
               </div>
             )}
           </div>
@@ -398,6 +393,7 @@ export default function TasksPage({ currentMember, members }: Props) {
   const [bulkStatus, setBulkStatus] = useState<TaskStatus | ''>('');
   const [bulkPriority, setBulkPriority] = useState<TaskPriority | ''>('');
   const [bulkDeleteIds, setBulkDeleteIds] = useState<number[] | null>(null);
+  const [bulkSelectMode, setBulkSelectMode] = useState(false);
 
   useEffect(() => {
     try {
@@ -530,7 +526,7 @@ export default function TasksPage({ currentMember, members }: Props) {
     }
   };
 
-  const selectionArmed = selectedIds.length > 0;
+  const selectionArmed = bulkSelectMode || selectedIds.length > 0;
 
   const gridCols = useMemo(() => taskListGridColumns(visibleColumns), [visibleColumns]);
 
@@ -555,6 +551,7 @@ export default function TasksPage({ currentMember, members }: Props) {
       await assignTask(id, bulkAssigneeIds, currentMember?.id);
     }
     setSelectedIds([]);
+    setBulkSelectMode(false);
     load();
   };
 
@@ -565,6 +562,7 @@ export default function TasksPage({ currentMember, members }: Props) {
     }
     setBulkSprint('');
     setSelectedIds([]);
+    setBulkSelectMode(false);
     load();
   };
 
@@ -581,6 +579,7 @@ export default function TasksPage({ currentMember, members }: Props) {
     }
     setBulkDeadline('');
     setSelectedIds([]);
+    setBulkSelectMode(false);
     load();
   };
 
@@ -591,6 +590,7 @@ export default function TasksPage({ currentMember, members }: Props) {
     }
     setBulkStatus('');
     setSelectedIds([]);
+    setBulkSelectMode(false);
     load();
   };
 
@@ -601,6 +601,7 @@ export default function TasksPage({ currentMember, members }: Props) {
     }
     setBulkPriority('');
     setSelectedIds([]);
+    setBulkSelectMode(false);
     load();
   };
 
@@ -650,6 +651,17 @@ export default function TasksPage({ currentMember, members }: Props) {
                   >
                     Manually add
                   </button>
+                  <button
+                    type="button"
+                    className="tasks-bulk-add-menu-item"
+                    role="menuitem"
+                    onClick={() => {
+                      setBulkAddOpen(false);
+                      setBulkSelectMode(true);
+                    }}
+                  >
+                    Bulk edit (select tasks)
+                  </button>
                 </div>
               ) : null}
             </div>
@@ -681,12 +693,36 @@ export default function TasksPage({ currentMember, members }: Props) {
         onChangeVisibleColumns={setVisibleColumns}
       />
 
+      {bulkSelectMode && visible.length > 0 ? (
+        <div className="tasks-bulk-mode-bar panel">
+          <label className="tasks-bulk-mode-bar-label">
+            <input
+              type="checkbox"
+              checked={visible.every(t => selectedIds.includes(t.id)) && visible.length > 0}
+              onChange={selectAllVisible}
+              aria-label="Select all visible tasks"
+            />
+            <span>Select all visible ({visible.length})</span>
+          </label>
+          <button type="button" className="btn btn-ghost btn-sm" onClick={() => setBulkSelectMode(false)}>
+            Exit bulk edit
+          </button>
+        </div>
+      ) : null}
+
       {selectedIds.length > 0 ? (
         <div className="tasks-batch-bar panel">
           <div className="tasks-batch-bar-head">
             <strong>{selectedIds.length}</strong>
             <span className="text-muted text-sm"> tasks selected</span>
-            <button type="button" className="btn btn-ghost btn-sm" onClick={() => setSelectedIds([])}>
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm"
+              onClick={() => {
+                setSelectedIds([]);
+                setBulkSelectMode(false);
+              }}
+            >
               Clear selection
             </button>
           </div>
@@ -787,45 +823,6 @@ export default function TasksPage({ currentMember, members }: Props) {
         </div>
       ) : null}
 
-      <div
-        className={`task-list-header${selectionArmed ? ' task-list-header--armed' : ''}`}
-        style={{ gridTemplateColumns: gridCols }}
-      >
-        <span className="task-list-header-select">
-          {selectionArmed ? (
-            <input
-              type="checkbox"
-              checked={visible.length > 0 && visible.every(t => selectedIds.includes(t.id))}
-              onChange={selectAllVisible}
-              aria-label="Select all visible tasks"
-            />
-          ) : null}
-        </span>
-        {visibleColumns.map(col => (
-          <span key={col} className={col === 'users' ? 'task-list-header-assignee' : undefined}>
-            {col === 'task'
-              ? 'Task'
-              : col === 'sprint'
-                ? 'Sprint'
-                : col === 'deadline'
-                  ? 'Deadline'
-                  : col === 'status'
-                    ? 'Status'
-                    : col === 'users'
-                      ? 'Users'
-                      : col === 'priority'
-                        ? 'Priority'
-                        : col === 'evaluation'
-                          ? 'Eval'
-                          : col === 'estimatedTime'
-                            ? 'Est. time'
-                            : col === 'updated'
-                              ? 'Updated'
-                              : 'Notes'}
-          </span>
-        ))}
-      </div>
-
       {visible.length === 0 ? (
         <div className="panel panel-empty tasks-empty-panel">
           {emptyFromFilters ? (
@@ -901,6 +898,7 @@ export default function TasksPage({ currentMember, members }: Props) {
             }
             setBulkDeleteIds(null);
             setSelectedIds([]);
+            setBulkSelectMode(false);
             load();
           }}
           onCancel={() => setBulkDeleteIds(null)}
