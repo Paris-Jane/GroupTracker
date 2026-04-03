@@ -6,44 +6,13 @@ import {
   saveSprintPokerVotes,
   fetchSprintPokerVotesAggregated,
   pokerApplyEvaluation,
-  pokerModeValue,
-  assignTask,
-  type PokerVoteRow,
 } from '../../api/client';
+import PokerTaskCard from './poker/PokerTaskCard';
+import { aggregatePokerRows, type PokerResultsRow } from './poker/pokerResultsUtils';
 
 const DECK = [0, 1, 2, 3, 5, 8, 13] as const;
 
 type Flow = 'menu' | 'play' | 'results';
-
-function aggregatePokerRows(
-  queue: number[],
-  votes: PokerVoteRow[],
-  members: GroupMember[],
-): {
-  taskId: number;
-  byMember: { memberId: number; memberName: string; value: number | null }[];
-  mode: number | null;
-  modeMemberIds: number[];
-}[] {
-  const byTask = new Map<number, Map<number, number | null>>();
-  for (const tid of queue) byTask.set(tid, new Map());
-  for (const v of votes) {
-    const m = byTask.get(v.taskItemId);
-    if (m) m.set(v.memberId, v.value);
-  }
-  return queue.map(taskId => {
-    const m = byTask.get(taskId) ?? new Map();
-    const byMember = members.map(mem => ({
-      memberId: mem.id,
-      memberName: mem.name,
-      value: m.get(mem.id) ?? null,
-    }));
-    const mode = pokerModeValue(byMember.map(x => ({ value: x.value })));
-    const modeMemberIds =
-      mode == null ? [] : byMember.filter(x => x.value === mode).map(x => x.memberId);
-    return { taskId, byMember, mode, modeMemberIds };
-  });
-}
 
 function normalizeMemberId(id: number | null): number | null {
   if (id == null) return null;
@@ -66,15 +35,16 @@ export default function PlanningPokerModal({
   sprintTasks: TaskItem[];
   members: GroupMember[];
   currentMemberId: number | null;
-  onTasksChanged: () => void;
+  onTasksChanged: () => void | Promise<void>;
 }) {
   const memberId = useMemo(() => normalizeMemberId(currentMemberId), [currentMemberId]);
 
   const [flow, setFlow] = useState<Flow>('menu');
   const [draft, setDraft] = useState<Record<number, number | ''>>({});
   const [saveError, setSaveError] = useState('');
-  const [resultsRows, setResultsRows] = useState<ReturnType<typeof aggregatePokerRows>>([]);
+  const [resultsRows, setResultsRows] = useState<PokerResultsRow[]>([]);
   const [resultsLoading, setResultsLoading] = useState(false);
+  const [applyBusy, setApplyBusy] = useState<Record<number, boolean>>({});
 
   const sortedTasks = useMemo(
     () => [...sprintTasks].sort((a, b) => a.name.localeCompare(b.name)),
@@ -112,6 +82,7 @@ export default function PlanningPokerModal({
       setResultsRows([]);
       setDraftLoading(false);
       setSaving(false);
+      setApplyBusy({});
     }
   }, [open]);
 
@@ -167,6 +138,23 @@ export default function PlanningPokerModal({
     return () => clearInterval(t);
   }, [open, flow, loadResults]);
 
+  const handleApplyEvaluation = useCallback(
+    async (taskId: number, value: number) => {
+      if (memberId == null) return;
+      setApplyBusy(b => ({ ...b, [taskId]: true }));
+      try {
+        await pokerApplyEvaluation(taskId, value, memberId);
+        await Promise.resolve(onTasksChanged());
+      } finally {
+        setApplyBusy(b => {
+          const { [taskId]: _, ...rest } = b;
+          return rest;
+        });
+      }
+    },
+    [memberId, onTasksChanged],
+  );
+
   const saveVotes = async () => {
     if (memberId == null) return;
     setSaveError('');
@@ -181,7 +169,7 @@ export default function PlanningPokerModal({
         };
       });
       await saveSprintPokerVotes(sprintNumber, memberId, entries);
-      onTasksChanged();
+      await Promise.resolve(onTasksChanged());
       setFlow('results');
     } catch {
       setSaveError('Could not save. Check your connection and try again.');
@@ -298,77 +286,23 @@ export default function PlanningPokerModal({
       ) : resultsLoading && resultsRows.length === 0 ? (
         <p className="text-sm text-muted">Loading…</p>
       ) : (
-        <ul className="game-results-list">
-          {resultsRows.map(row => {
-            const t = taskMap.get(row.taskId);
-            const name = t?.name ?? `Task #${row.taskId}`;
-            return (
-              <li key={row.taskId} className="game-results-card card">
-                <div className="game-results-card-head">
-                  <span className="font-medium">{name}</span>
-                  {row.mode != null ? (
-                    <span className="text-xs game-results-top-badge">Mode: {row.mode}</span>
-                  ) : (
-                    <span className="text-xs text-muted">No consensus yet</span>
-                  )}
-                </div>
-                <div className="game-results-grid">
-                  {row.byMember.map(cell => (
-                    <div
-                      key={cell.memberId}
-                      className={`game-results-cell${row.modeMemberIds.includes(cell.memberId) && cell.value != null ? ' game-results-cell--top' : ''}`}
-                    >
-                      <span className="game-results-name">{cell.memberName}</span>
-                      <span className="game-results-value">{cell.value ?? '—'}</span>
-                    </div>
-                  ))}
-                </div>
-                {memberId != null ? (
-                  <div className="game-results-assign flex gap-2 flex-wrap mt-2">
-                    {row.mode != null ? (
-                      <button
-                        type="button"
-                        className="btn btn-primary btn-sm"
-                        disabled={saving}
-                        onClick={async () => {
-                          const m = row.mode;
-                          if (m == null) return;
-                          setSaving(true);
-                          try {
-                            await pokerApplyEvaluation(row.taskId, m, memberId);
-                            onTasksChanged();
-                          } finally {
-                            setSaving(false);
-                          }
-                        }}
-                      >
-                        Set evaluation to {row.mode}
-                      </button>
-                    ) : null}
-                    {row.modeMemberIds.map(mid => (
-                      <button
-                        key={mid}
-                        type="button"
-                        className="btn btn-secondary btn-sm"
-                        disabled={saving}
-                        onClick={async () => {
-                          setSaving(true);
-                          try {
-                            await assignTask(row.taskId, [mid], memberId);
-                            onTasksChanged();
-                          } finally {
-                            setSaving(false);
-                          }
-                        }}
-                      >
-                        Assign to {members.find(m => m.id === mid)?.name ?? mid}
-                      </button>
-                    ))}
-                  </div>
-                ) : null}
-              </li>
-            );
-          })}
+        <ul className="pick-results-list">
+          {resultsRows
+            .filter(row => taskMap.has(row.taskId))
+            .map(row => {
+              const task = taskMap.get(row.taskId)!;
+              return (
+                <PokerTaskCard
+                  key={row.taskId}
+                  row={row}
+                  task={task}
+                  members={members}
+                  currentMemberId={memberId}
+                  applying={!!applyBusy[row.taskId]}
+                  onApplyEstimate={value => void handleApplyEvaluation(row.taskId, value)}
+                />
+              );
+            })}
         </ul>
       )}
     </div>

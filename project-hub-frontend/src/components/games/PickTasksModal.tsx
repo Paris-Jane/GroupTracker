@@ -35,7 +35,7 @@ export default function PickTasksModal({
   sprintTasks: TaskItem[];
   members: GroupMember[];
   currentMemberId: number | null;
-  onTasksChanged?: () => void;
+  onTasksChanged?: () => void | Promise<void>;
 }) {
   const memberId = useMemo(() => normalizeMemberId(currentMemberId), [currentMemberId]);
 
@@ -157,7 +157,7 @@ export default function PickTasksModal({
       setAssignBusy(b => ({ ...b, [taskId]: true }));
       try {
         await assignTask(taskId, nextSnapshot, memberId);
-        onTasksChanged?.();
+        await Promise.resolve(onTasksChanged?.());
         setAssignOptimistic(o => {
           const { [taskId]: _, ...rest } = o;
           return rest;
@@ -191,7 +191,7 @@ export default function PickTasksModal({
         };
       });
       await saveSprintPickRatings(sprintNumber, memberId, entries);
-      onTasksChanged?.();
+      await Promise.resolve(onTasksChanged?.());
       setFlow('results');
     } catch {
       setSaveError('Could not save. Check your connection and try again.');

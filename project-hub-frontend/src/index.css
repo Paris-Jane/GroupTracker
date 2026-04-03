@@ -2454,6 +2454,39 @@ tr:hover td { background: var(--surface-hover); }
   background: color-mix(in srgb, var(--pick-row-accent, #94a3b8) 12%, color-mix(in srgb, var(--primary, #2563eb) 8%, var(--surface, #fff)));
 }
 
+/* Planning poker results: estimate applied to task (matches pick assigned styling) */
+.pick-results-row--applied {
+  border-color: color-mix(in srgb, var(--pick-row-accent, #94a3b8) 45%, var(--border));
+  background: color-mix(in srgb, var(--pick-row-accent, #94a3b8) 14%, var(--surface, #fff));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--pick-row-accent, #94a3b8) 18%, transparent);
+}
+
+.pick-results-row--applied.pick-results-row--recommended {
+  background: color-mix(in srgb, var(--pick-row-accent, #94a3b8) 12%, color-mix(in srgb, var(--primary, #2563eb) 8%, var(--surface, #fff)));
+}
+
+.poker-results-vote-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 1.25rem;
+}
+
+.poker-results-vote-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 2rem;
+  height: 1.75rem;
+  padding: 0 10px;
+  border-radius: var(--radius, 8px);
+  font-size: 0.9375rem;
+  font-weight: 700;
+  border: 1px solid color-mix(in srgb, var(--primary, #2563eb) 35%, var(--border));
+  background: color-mix(in srgb, var(--primary, #2563eb) 8%, var(--surface, #fff));
+  color: var(--text, #0f172a);
+}
+
 .pick-results-row-avatar {
   flex-shrink: 0;
 }
