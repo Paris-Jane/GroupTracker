@@ -6,43 +6,13 @@ import {
   saveSprintPickRatings,
   fetchSprintPickRatingsAggregated,
   assignTask,
-  type PickRatingRow,
 } from '../../api/client';
+import PickTaskCard from './pick/PickTaskCard';
+import { aggregatePickRows, type PickResultsRow } from './pick/pickResultsUtils';
 
 type Flow = 'menu' | 'rank' | 'results';
 
 const COMFORT_CARDS = [1, 2, 3, 4, 5] as const;
-
-function aggregatePickRows(
-  queue: number[],
-  ratings: PickRatingRow[],
-  members: GroupMember[],
-): {
-  taskId: number;
-  byMember: { memberId: number; memberName: string; rating: number | null }[];
-  maxRating: number | null;
-  topMemberIds: number[];
-}[] {
-  const byTask = new Map<number, Map<number, number | null>>();
-  for (const tid of queue) byTask.set(tid, new Map());
-  for (const r of ratings) {
-    const m = byTask.get(r.taskItemId);
-    if (m) m.set(r.memberId, r.rating);
-  }
-  return queue.map(taskId => {
-    const m = byTask.get(taskId) ?? new Map();
-    const byMember = members.map(mem => ({
-      memberId: mem.id,
-      memberName: mem.name,
-      rating: m.get(mem.id) ?? null,
-    }));
-    const numeric = byMember.map(x => x.rating).filter((x): x is number => x != null);
-    const maxRating = numeric.length ? Math.max(...numeric) : null;
-    const topMemberIds =
-      maxRating == null ? [] : byMember.filter(x => x.rating === maxRating).map(x => x.memberId);
-    return { taskId, byMember, maxRating, topMemberIds };
-  });
-}
 
 function normalizeMemberId(id: number | null): number | null {
   if (id == null) return null;
@@ -74,8 +44,10 @@ export default function PickTasksModal({
   const [draftLoading, setDraftLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
-  const [resultsRows, setResultsRows] = useState<ReturnType<typeof aggregatePickRows>>([]);
+  const [resultsRows, setResultsRows] = useState<PickResultsRow[]>([]);
   const [resultsLoading, setResultsLoading] = useState(false);
+  const [assignOptimistic, setAssignOptimistic] = useState<Record<number, number[] | undefined>>({});
+  const [assignBusy, setAssignBusy] = useState<Record<number, boolean>>({});
 
   const sortedTasks = useMemo(
     () => [...sprintTasks].sort((a, b) => a.name.localeCompare(b.name)),
@@ -86,6 +58,8 @@ export default function PickTasksModal({
 
   const sortedTasksRef = useRef(sortedTasks);
   sortedTasksRef.current = sortedTasks;
+  const taskMapRef = useRef(taskMap);
+  taskMapRef.current = taskMap;
 
   const sprintNumberRef = useRef(sprintNumber);
   const taskOrderRef = useRef(taskOrder);
@@ -110,6 +84,8 @@ export default function PickTasksModal({
       setResultsRows([]);
       setDraftLoading(false);
       setSaving(false);
+      setAssignOptimistic({});
+      setAssignBusy({});
       return;
     }
   }, [open]);
@@ -145,7 +121,6 @@ export default function PickTasksModal({
     };
   }, [open, flow, sprintNumber, memberId]);
 
-  /** Refs keep this stable so parent re-renders (tasks/members) do not retrigger loading + blink. */
   const loadResults = useCallback(async (opts?: { silent?: boolean }) => {
     const silent = opts?.silent === true;
     if (!silent) setResultsLoading(true);
@@ -166,6 +141,41 @@ export default function PickTasksModal({
     const t = setInterval(() => void loadResults({ silent: true }), 8000);
     return () => clearInterval(t);
   }, [open, flow, loadResults]);
+
+  const handlePickToggleAssign = useCallback(
+    async (taskId: number, toggleMemberId: number) => {
+      if (memberId == null) return;
+      let nextSnapshot: number[] = [];
+      setAssignOptimistic(o => {
+        const task = taskMapRef.current.get(taskId);
+        const base = o[taskId] ?? task?.assignments.map(a => a.groupMemberId) ?? [];
+        nextSnapshot = base.includes(toggleMemberId)
+          ? base.filter(id => id !== toggleMemberId)
+          : [...base, toggleMemberId];
+        return { ...o, [taskId]: nextSnapshot };
+      });
+      setAssignBusy(b => ({ ...b, [taskId]: true }));
+      try {
+        await assignTask(taskId, nextSnapshot, memberId);
+        onTasksChanged?.();
+        setAssignOptimistic(o => {
+          const { [taskId]: _, ...rest } = o;
+          return rest;
+        });
+      } catch {
+        setAssignOptimistic(o => {
+          const { [taskId]: _, ...rest } = o;
+          return rest;
+        });
+      } finally {
+        setAssignBusy(b => {
+          const { [taskId]: _, ...rest } = b;
+          return rest;
+        });
+      }
+    },
+    [memberId, onTasksChanged],
+  );
 
   const saveRankings = async () => {
     if (memberId == null) return;
@@ -298,55 +308,26 @@ export default function PickTasksModal({
       ) : resultsLoading && resultsRows.length === 0 ? (
         <p className="text-sm text-muted">Loading…</p>
       ) : (
-        <ul className="game-results-list">
-          {resultsRows.map(row => {
-            const t = taskMap.get(row.taskId);
-            const name = t?.name ?? `Task #${row.taskId}`;
-            return (
-              <li key={row.taskId} className="game-results-card card">
-                <div className="game-results-card-head">
-                  <span className="font-medium">{name}</span>
-                  {row.maxRating != null && row.topMemberIds.length > 0 ? (
-                    <span className="text-xs game-results-top-badge">Top: {row.maxRating}/5</span>
-                  ) : null}
-                </div>
-                <div className="game-results-grid">
-                  {row.byMember.map(cell => (
-                    <div
-                      key={cell.memberId}
-                      className={`game-results-cell${row.topMemberIds.includes(cell.memberId) && cell.rating != null ? ' game-results-cell--top' : ''}`}
-                    >
-                      <span className="game-results-name">{cell.memberName}</span>
-                      <span className="game-results-value">{cell.rating ?? '—'}</span>
-                    </div>
-                  ))}
-                </div>
-                {row.topMemberIds.length > 0 && memberId != null ? (
-                  <div className="game-results-assign flex gap-2 flex-wrap mt-2">
-                    {row.topMemberIds.map(mid => (
-                      <button
-                        key={mid}
-                        type="button"
-                        className="btn btn-primary btn-sm"
-                        disabled={saving}
-                        onClick={async () => {
-                          setSaving(true);
-                          try {
-                            await assignTask(row.taskId, [mid], memberId);
-                            onTasksChanged?.();
-                          } finally {
-                            setSaving(false);
-                          }
-                        }}
-                      >
-                        Assign to {members.find(m => m.id === mid)?.name ?? mid}
-                      </button>
-                    ))}
-                  </div>
-                ) : null}
-              </li>
-            );
-          })}
+        <ul className="pick-results-list">
+          {resultsRows
+            .filter(row => taskMap.has(row.taskId))
+            .map(row => {
+              const task = taskMap.get(row.taskId)!;
+              const assignedIds =
+                assignOptimistic[row.taskId] ?? task.assignments.map(a => a.groupMemberId);
+              return (
+                <PickTaskCard
+                  key={row.taskId}
+                  row={row}
+                  task={task}
+                  members={members}
+                  assignedMemberIds={assignedIds}
+                  currentMemberId={memberId}
+                  assigning={!!assignBusy[row.taskId]}
+                  onToggleAssign={mid => void handlePickToggleAssign(row.taskId, mid)}
+                />
+              );
+            })}
         </ul>
       )}
     </div>
