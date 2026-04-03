@@ -4,6 +4,40 @@ import { resolveMemberColor } from '../../lib/memberColor';
 
 export type TasksSortKey = 'deadline' | 'priority' | 'name' | 'updated';
 
+export type TaskColumnKey =
+  | 'task'
+  | 'sprint'
+  | 'deadline'
+  | 'status'
+  | 'users'
+  | 'priority'
+  | 'updated'
+  | 'notes';
+
+export const ALL_TASK_COLUMN_KEYS: TaskColumnKey[] = [
+  'task',
+  'sprint',
+  'deadline',
+  'status',
+  'users',
+  'priority',
+  'updated',
+  'notes',
+];
+
+export const DEFAULT_TASK_COLUMN_KEYS: TaskColumnKey[] = ['task', 'sprint', 'deadline', 'status', 'users'];
+
+const COLUMN_LABELS: Record<TaskColumnKey, string> = {
+  task: 'Task',
+  sprint: 'Sprint',
+  deadline: 'Deadline',
+  status: 'Status',
+  users: 'Users',
+  priority: 'Priority',
+  updated: 'Last updated',
+  notes: 'Notes',
+};
+
 const PRIORITIES: TaskPriority[] = ['High', 'Medium', 'Low'];
 
 export function memberChipColor(m: GroupMember): string {
@@ -92,6 +126,10 @@ export interface TaskFiltersProps {
   overdueCount: number;
   activeSummary: string | null;
   onClearAllFilters: () => void;
+  advancedOpen: boolean;
+  onToggleAdvanced: () => void;
+  visibleColumns: TaskColumnKey[];
+  onChangeVisibleColumns: (cols: TaskColumnKey[]) => void;
 }
 
 export function TaskFilters({
@@ -117,6 +155,10 @@ export function TaskFilters({
   overdueCount,
   activeSummary,
   onClearAllFilters,
+  advancedOpen,
+  onToggleAdvanced,
+  visibleColumns,
+  onChangeVisibleColumns,
 }: TaskFiltersProps) {
   const filterBtnOn = filtersOpen || !!activeSummary;
 
@@ -306,6 +348,44 @@ export function TaskFilters({
                   </>
                 ) : null}
               </div>
+            </div>
+
+            <div className="tasks-filter-advanced-block">
+              <button
+                type="button"
+                className={`btn btn-ghost btn-sm tasks-filter-advanced-btn${advancedOpen ? ' is-on' : ''}`}
+                onClick={onToggleAdvanced}
+                aria-expanded={advancedOpen}
+              >
+                Advanced column settings
+              </button>
+              {advancedOpen ? (
+                <div className="tasks-filter-column-grid" role="group" aria-label="Visible columns">
+                  <span className="tasks-filter-group-label">Show columns</span>
+                  <div className="tasks-filter-column-checks">
+                    {ALL_TASK_COLUMN_KEYS.map(key => {
+                      const on = visibleColumns.includes(key);
+                      return (
+                        <label key={key} className="tasks-filter-column-check">
+                          <input
+                            type="checkbox"
+                            checked={on}
+                            disabled={key === 'task'}
+                            onChange={() => {
+                              if (key === 'task') return;
+                              const set = new Set(visibleColumns);
+                              if (on) set.delete(key);
+                              else set.add(key);
+                              onChangeVisibleColumns(ALL_TASK_COLUMN_KEYS.filter(k => set.has(k)));
+                            }}
+                          />
+                          {COLUMN_LABELS[key]}
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : null}
             </div>
           </div>
         ) : null}

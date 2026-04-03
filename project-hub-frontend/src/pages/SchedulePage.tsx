@@ -6,7 +6,7 @@ import {
   deleteScheduleItem,
 } from '../api/client';
 import type { GroupMember, ScheduleItem, ScheduleCategory } from '../types';
-import { SCHEDULE_WEEK_START, SCHEDULE_WEEK_END } from '../types';
+import { scheduleWeekMonFriContaining } from '../types';
 
 interface Props {
   currentMember: GroupMember | null;
@@ -49,6 +49,12 @@ function formatHour12(totalMin: number) {
   return m ? `${h12}:${String(m).padStart(2, '0')} ${p}` : `${h12} ${p}`;
 }
 
+function minutesToHHMM(totalMin: number) {
+  const h = Math.floor(totalMin / 60);
+  const m = totalMin % 60;
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+}
+
 function blockLayout(it: ScheduleItem) {
   let start = parseTimeToMinutes(it.startTime);
   let end = parseTimeToMinutes(it.endTime);
@@ -68,12 +74,18 @@ const HOUR_TICKS = Array.from({ length: 14 }, (_, i) => DAY_START_MIN + i * 60);
 export default function SchedulePage({ currentMember, members }: Props) {
   const [items, setItems] = useState<ScheduleItem[]>([]);
   const [editing, setEditing] = useState<ScheduleItem | 'new' | null>(null);
+  const [newSlotDefaults, setNewSlotDefaults] = useState<{
+    date: string;
+    startTime: string;
+    endTime: string;
+  } | null>(null);
 
-  const days = useMemo(() => weekDaysInclusive(SCHEDULE_WEEK_START, SCHEDULE_WEEK_END), []);
+  const { start: weekStart, end: weekEnd } = useMemo(() => scheduleWeekMonFriContaining(), []);
+  const days = useMemo(() => weekDaysInclusive(weekStart, weekEnd), [weekStart, weekEnd]);
 
   const load = useCallback(
-    () => getScheduleItemsBetween(SCHEDULE_WEEK_START, SCHEDULE_WEEK_END).then(setItems),
-    [],
+    () => getScheduleItemsBetween(weekStart, weekEnd).then(setItems),
+    [weekStart, weekEnd],
   );
   useEffect(() => {
     load();
@@ -94,16 +106,36 @@ export default function SchedulePage({ currentMember, members }: Props) {
 
   const memberName = (id?: number) => members.find(x => x.id === id)?.name ?? '—';
 
+  const openNew = (defaults?: { date: string; startTime: string; endTime: string }) => {
+    setNewSlotDefaults(defaults ?? null);
+    setEditing('new');
+  };
+
+  const closeModal = () => {
+    setEditing(null);
+    setNewSlotDefaults(null);
+  };
+
+  const handleTimelineClick = (dayIso: string, e: React.MouseEvent<HTMLDivElement>) => {
+    if ((e.target as HTMLElement).closest('button.schedule-block-abs')) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const y = e.clientY - rect.top;
+    const pct = Math.max(0, Math.min(1, y / rect.height));
+    const minRaw = DAY_START_MIN + pct * RANGE_MIN;
+    const startMin = Math.round(minRaw / 15) * 15;
+    const endMin = Math.min(startMin + 60, DAY_END_MIN);
+    openNew({
+      date: dayIso,
+      startTime: minutesToHHMM(startMin),
+      endTime: minutesToHHMM(endMin),
+    });
+  };
+
   return (
     <div className="page schedule-page-full">
       <header className="page-title-block schedule-page-header">
-        <div>
-          <h1 className="page-title">Schedule</h1>
-          <p className="page-subtitle">
-            {formatDayLabel(SCHEDULE_WEEK_START)} – {formatDayLabel(SCHEDULE_WEEK_END)}
-          </p>
-        </div>
-        <button type="button" className="btn btn-primary btn-sm" onClick={() => setEditing('new')}>
+        <p className="text-muted text-sm schedule-page-hint">Click a day column to add a time block (Mon–Fri this week).</p>
+        <button type="button" className="btn btn-primary btn-sm" onClick={() => openNew()}>
           Add block
         </button>
       </header>
@@ -133,7 +165,25 @@ export default function SchedulePage({ currentMember, members }: Props) {
               </div>
             </div>
             {days.map(d => (
-              <div key={d} className="schedule-timeline">
+              <div
+                key={d}
+                className="schedule-timeline schedule-timeline--clickable"
+                role="button"
+                tabIndex={0}
+                onClick={e => handleTimelineClick(d, e)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    const rect = (e.currentTarget as HTMLDivElement).getBoundingClientRect();
+                    const fake = {
+                      clientY: rect.top + rect.height * 0.35,
+                      currentTarget: e.currentTarget,
+                    } as unknown as React.MouseEvent<HTMLDivElement>;
+                    handleTimelineClick(d, fake);
+                  }
+                }}
+                aria-label={`Add schedule block on ${formatDayLabel(d)}`}
+              >
                 {HOUR_TICKS.map(min => (
                   <div
                     key={min}
@@ -147,7 +197,10 @@ export default function SchedulePage({ currentMember, members }: Props) {
                     type="button"
                     className={`schedule-block-abs schedule-cat-${it.category.toLowerCase()}`}
                     style={blockLayout(it)}
-                    onClick={() => setEditing(it)}
+                    onClick={ev => {
+                      ev.stopPropagation();
+                      setEditing(it);
+                    }}
                   >
                     <div className="schedule-block-abs-time">
                       {it.startTime.slice(0, 5)} – {it.endTime.slice(0, 5)}
@@ -167,21 +220,23 @@ export default function SchedulePage({ currentMember, members }: Props) {
       {editing && (
         <ScheduleModal
           item={editing === 'new' ? null : editing}
-          defaultDate={SCHEDULE_WEEK_START}
+          defaultDate={newSlotDefaults?.date ?? weekStart}
+          defaultStartTime={newSlotDefaults?.startTime}
+          defaultEndTime={newSlotDefaults?.endTime}
           currentMember={currentMember}
           members={members}
-          onClose={() => setEditing(null)}
+          onClose={closeModal}
           onSave={async row => {
             if (editing === 'new') await createScheduleItem(row);
             else await updateScheduleItem(editing.id, row);
-            setEditing(null);
+            closeModal();
             load();
           }}
           onDelete={
             editing !== 'new' && editing
               ? async () => {
                   await deleteScheduleItem(editing.id);
-                  setEditing(null);
+                  closeModal();
                   load();
                 }
               : undefined
@@ -195,6 +250,8 @@ export default function SchedulePage({ currentMember, members }: Props) {
 function ScheduleModal({
   item,
   defaultDate,
+  defaultStartTime,
+  defaultEndTime,
   currentMember,
   members,
   onClose,
@@ -203,6 +260,8 @@ function ScheduleModal({
 }: {
   item: ScheduleItem | null;
   defaultDate: string;
+  defaultStartTime?: string;
+  defaultEndTime?: string;
   currentMember: GroupMember | null;
   members: GroupMember[];
   onClose: () => void;
@@ -212,8 +271,10 @@ function ScheduleModal({
   const [title, setTitle] = useState(item?.title ?? '');
   const [category, setCategory] = useState<ScheduleCategory>(item?.category ?? 'Meeting');
   const [date, setDate] = useState(item?.date ?? defaultDate);
-  const [startTime, setStartTime] = useState(item?.startTime?.slice(0, 5) ?? '09:00');
-  const [endTime, setEndTime] = useState(item?.endTime?.slice(0, 5) ?? '10:00');
+  const [startTime, setStartTime] = useState(
+    item?.startTime?.slice(0, 5) ?? defaultStartTime ?? '09:00',
+  );
+  const [endTime, setEndTime] = useState(item?.endTime?.slice(0, 5) ?? defaultEndTime ?? '10:00');
   const [location, setLocation] = useState(item?.location ?? '');
   const [notes, setNotes] = useState(item?.notes ?? '');
   const [ownerMemberId, setOwnerMemberId] = useState<number | ''>(item?.ownerMemberId ?? currentMember?.id ?? '');
@@ -244,23 +305,26 @@ function ScheduleModal({
               </select>
             </div>
             <div className="form-row">
-              <label>Date</label>
+              <label>Day</label>
               <input type="date" value={date} onChange={e => setDate(e.target.value)} />
             </div>
           </div>
           <div className="form-grid mb-3">
             <div className="form-row">
-              <label>Start</label>
+              <label>Start time</label>
               <input type="time" value={startTime} onChange={e => setStartTime(e.target.value)} />
             </div>
             <div className="form-row">
-              <label>End</label>
+              <label>End time</label>
               <input type="time" value={endTime} onChange={e => setEndTime(e.target.value)} />
             </div>
           </div>
           <div className="form-row">
             <label>Owner</label>
-            <select value={ownerMemberId === '' ? '' : String(ownerMemberId)} onChange={e => setOwnerMemberId(e.target.value ? Number(e.target.value) : '')}>
+            <select
+              value={ownerMemberId === '' ? '' : String(ownerMemberId)}
+              onChange={e => setOwnerMemberId(e.target.value ? Number(e.target.value) : '')}
+            >
               <option value="">None</option>
               {members.map(m => (
                 <option key={m.id} value={m.id}>

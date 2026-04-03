@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
+import { useEffect, useMemo, useRef, useState, useCallback, type CSSProperties } from 'react';
 import {
   getTasks,
   getProjectSettings,
@@ -16,12 +16,20 @@ import {
   assignTask,
   deleteTask,
 } from '../api/client';
-import type { GroupMember, TaskItem, TaskStatus, CreateTaskDto, SprintReview } from '../types';
+import type {
+  GroupMember,
+  TaskItem,
+  TaskStatus,
+  CreateTaskDto,
+  SprintReview,
+  SprintReviewKind,
+} from '../types';
 import { inferCurrentSprintNumber, parseLocalDate } from '../lib/sprintCurrent';
 import UserAvatar from '../components/common/UserAvatar';
 import Avatar from '../components/common/Avatar';
 import TaskFormModal from '../components/Tasks/TaskFormModal';
 import ConfirmDialog from '../components/common/ConfirmDialog';
+import { memberChipColor } from '../components/Tasks/TaskFilters';
 
 interface Props {
   currentMember: GroupMember | null;
@@ -40,21 +48,134 @@ function statusForCol(col: 'todo' | 'progress' | 'done'): TaskStatus {
   return 'NotStarted';
 }
 
-function statusBadgeLabel(s: TaskStatus) {
-  if (s === 'NotStarted') return 'To do';
-  if (s === 'InProgress') return 'In progress';
-  return 'Done';
-}
-
-function statusBadgeClass(s: TaskStatus) {
-  if (s === 'Completed') return 'sprint-b-badge--done';
-  if (s === 'InProgress') return 'sprint-b-badge--progress';
-  return 'sprint-b-badge--todo';
-}
-
 type BoardCol = 'todo' | 'progress' | 'done';
 
 type CtxMenu = { kind: 'details'; clientX: number; clientY: number };
+
+function SprintBoardCard({
+  task,
+  members,
+  currentMember,
+  onOpenTask,
+  onAssigneesUpdated,
+  onDragEnd,
+}: {
+  task: TaskItem;
+  members: GroupMember[];
+  currentMember: GroupMember | null;
+  onOpenTask: () => void;
+  onAssigneesUpdated: () => void;
+  onDragEnd: () => void;
+}) {
+  const [assignOpen, setAssignOpen] = useState(false);
+  const assignWrapRef = useRef<HTMLDivElement>(null);
+
+  const closeOnOutside = useCallback((e: MouseEvent) => {
+    if (assignWrapRef.current && !assignWrapRef.current.contains(e.target as Node)) {
+      setAssignOpen(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!assignOpen) return;
+    document.addEventListener('mousedown', closeOnOutside);
+    return () => document.removeEventListener('mousedown', closeOnOutside);
+  }, [assignOpen, closeOnOutside]);
+
+  const assignedIds = task.assignments.map(a => a.groupMemberId);
+
+  const toggleAssignee = async (memberId: number) => {
+    const next = assignedIds.includes(memberId)
+      ? assignedIds.filter(id => id !== memberId)
+      : [...assignedIds, memberId];
+    await assignTask(task.id, next, currentMember?.id);
+    onAssigneesUpdated();
+  };
+
+  return (
+    <div
+      className="sprint-b-card"
+      draggable
+      onDragStart={e => {
+        e.dataTransfer.setData('application/task-id', String(task.id));
+        e.dataTransfer.setData('text/plain', String(task.id));
+        e.dataTransfer.effectAllowed = 'move';
+      }}
+      onDragEnd={onDragEnd}
+      onClick={e => {
+        if ((e.target as HTMLElement).closest('.sprint-b-card-assign-wrap')) return;
+        onOpenTask();
+      }}
+      onKeyDown={e => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onOpenTask();
+        }
+      }}
+      role="button"
+      tabIndex={0}
+    >
+      <h3 className="sprint-b-card-title">{task.name}</h3>
+      <div
+        className="sprint-b-card-assign-wrap"
+        ref={assignWrapRef}
+        onClick={e => e.stopPropagation()}
+        onKeyDown={e => e.stopPropagation()}
+      >
+        <div className="sprint-b-card-assign-inner">
+          {task.assignments.length > 0 ? (
+            <div className="sprint-b-card-avatars">
+              {task.assignments.map(a => (
+                <Avatar
+                  key={a.id}
+                  initial={a.memberAvatarInitial}
+                  color={a.memberColor}
+                  size="sm"
+                  name={a.memberName}
+                />
+              ))}
+            </div>
+          ) : null}
+          <button
+            type="button"
+            className="sprint-b-assign-plus"
+            onClick={() => setAssignOpen(o => !o)}
+            aria-expanded={assignOpen}
+            aria-label={task.assignments.length ? 'Edit assignees' : 'Assign people'}
+          >
+            <span aria-hidden>+</span>
+          </button>
+        </div>
+        {assignOpen && (
+          <div className="task-assign-popover task-assign-popover--icons sprint-b-assign-popover" role="dialog" aria-label="Choose assignees">
+            <p className="task-assign-popover-hint">Select people</p>
+            <div className="task-assign-popover-avatars">
+              {members.map(m => {
+                const on = assignedIds.includes(m.id);
+                const c = memberChipColor(m);
+                const initial = (m.avatarInitial ?? m.name.charAt(0) ?? '?').toUpperCase();
+                return (
+                  <button
+                    key={m.id}
+                    type="button"
+                    className={`task-assign-icon-btn${on ? ' task-assign-icon-btn--on' : ''}`}
+                    style={{ '--assign-icon-bg': c } as CSSProperties}
+                    title={m.name}
+                    aria-label={m.name}
+                    aria-pressed={on}
+                    onClick={() => void toggleAssignee(m.id)}
+                  >
+                    <span className="task-assign-icon-circle">{initial}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
 
 function clampMenuPosition(clientX: number, clientY: number, menuW: number, menuH: number) {
   const pad = 8;
@@ -71,7 +192,8 @@ export default function ScrumPage({ currentMember, members }: Props) {
   const [sprintGoals, setSprintGoals] = useState<Awaited<ReturnType<typeof getSprintGoals>>>([]);
   const [sprintNum, setSprintNum] = useState(1);
   const [reviews, setReviews] = useState<SprintReview[]>([]);
-  const [reviewBody, setReviewBody] = useState('');
+  const [reviewWellBody, setReviewWellBody] = useState('');
+  const [reviewImproveBody, setReviewImproveBody] = useState('');
   const [savingDetails, setSavingDetails] = useState(false);
 
   const [detailsModalOpen, setDetailsModalOpen] = useState(false);
@@ -86,14 +208,19 @@ export default function ScrumPage({ currentMember, members }: Props) {
     status?: TaskStatus;
     sprintNumber?: number;
   } | null>(null);
-  const [editingReview, setEditingReview] = useState<{ id: number; content: string } | null>(null);
+  const [editingReview, setEditingReview] = useState<{
+    id: number;
+    content: string;
+    reviewKind: SprintReviewKind;
+  } | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<null | { type: 'sprint' } | { type: 'task'; id: number } | { type: 'review'; id: number }>(null);
 
   const autoSprintSet = useRef(false);
   const configuredSprintCount = settings?.sprintCount ?? 6;
   const todayMatchSprint = useMemo(
-    () => inferCurrentSprintNumber(sprintGoals, tasks, configuredSprintCount),
-    [sprintGoals, tasks, configuredSprintCount],
+    () =>
+      inferCurrentSprintNumber(sprintGoals, tasks, configuredSprintCount, settings?.sprintDeadlines),
+    [sprintGoals, tasks, configuredSprintCount, settings?.sprintDeadlines],
   );
 
   const loadTasks = () => getTasks().then(setTasks);
@@ -122,7 +249,7 @@ export default function ScrumPage({ currentMember, members }: Props) {
     const m = settings.sprintCount ?? 6;
     if (tasks.length === 0 && sprintGoals.length === 0) return;
     if (!autoSprintSet.current) {
-      setSprintNum(inferCurrentSprintNumber(sprintGoals, tasks, m));
+      setSprintNum(inferCurrentSprintNumber(sprintGoals, tasks, m, settings.sprintDeadlines));
       autoSprintSet.current = true;
     }
   }, [settings, tasks, sprintGoals]);
@@ -343,48 +470,15 @@ export default function ScrumPage({ currentMember, members }: Props) {
               >
                 {list.length === 0 ? <p className="sprint-col-v3-empty">No tasks</p> : null}
                 {list.map(t => (
-                  <div
+                  <SprintBoardCard
                     key={t.id}
-                    className="sprint-b-card"
-                    draggable
-                    onDragStart={e => {
-                      e.dataTransfer.setData('application/task-id', String(t.id));
-                      e.dataTransfer.setData('text/plain', String(t.id));
-                      e.dataTransfer.effectAllowed = 'move';
-                    }}
+                    task={t}
+                    members={members}
+                    currentMember={currentMember}
+                    onOpenTask={() => setEditingTask(t)}
+                    onAssigneesUpdated={() => loadTasks()}
                     onDragEnd={() => setDragOver(null)}
-                    onClick={() => setEditingTask(t)}
-                    onKeyDown={e => {
-                      if (e.key === 'Enter' || e.key === ' ') {
-                        e.preventDefault();
-                        setEditingTask(t);
-                      }
-                    }}
-                    role="button"
-                    tabIndex={0}
-                  >
-                    <h3 className="sprint-b-card-title">{t.name}</h3>
-                    <div className="sprint-b-card-row">
-                      <div className="sprint-b-card-avatars" aria-label={t.assignments.length ? 'Assigned' : 'Unassigned'}>
-                        {t.assignments.length > 0 ? (
-                          t.assignments.map(a => (
-                            <Avatar
-                              key={a.id}
-                              initial={a.memberAvatarInitial}
-                              color={a.memberColor}
-                              size="sm"
-                              name={a.memberName}
-                            />
-                          ))
-                        ) : (
-                          <span className="sprint-b-card-unassigned" title="Unassigned">
-                            —
-                          </span>
-                        )}
-                      </div>
-                      <span className={`sprint-b-badge ${statusBadgeClass(t.status)}`}>{statusBadgeLabel(t.status)}</span>
-                    </div>
-                  </div>
+                  />
                 ))}
               </div>
               <footer className="sprint-col-v3-foot">
@@ -401,66 +495,150 @@ export default function ScrumPage({ currentMember, members }: Props) {
       {/* Section 3: Retrospective */}
       <section className="sprint-zone sprint-zone--review" aria-label="Sprint retrospective">
         <div className="sprint-retro-card">
-        <h2 className="sprint-zone-title sprint-retro-card-title">Sprint retrospective</h2>
-        <div className="sprint-review-compose">
-          <textarea
-            className="sprint-review-textarea"
-            rows={2}
-            value={reviewBody}
-            onChange={e => setReviewBody(e.target.value)}
-            placeholder="What went well, what to improve…"
-            disabled={!currentMember}
-          />
-          <div className="sprint-review-compose-actions">
-            <button
-              type="button"
-              className="btn btn-primary btn-sm"
-              disabled={!currentMember || !reviewBody.trim()}
-              onClick={async () => {
-                if (!currentMember || !reviewBody.trim()) return;
-                await addSprintReview(sprintNum, currentMember.id, reviewBody.trim());
-                setReviewBody('');
-                loadReviews();
-              }}
-            >
-              Post note
-            </button>
+          <h2 className="sprint-zone-title sprint-retro-card-title">Sprint retrospective</h2>
+          <div className="sprint-retro-two-col">
+            <div className="sprint-retro-column">
+              <h3 className="sprint-retro-column-title">What went well</h3>
+              <textarea
+                className="sprint-review-textarea"
+                rows={3}
+                value={reviewWellBody}
+                onChange={e => setReviewWellBody(e.target.value)}
+                placeholder="Share positives, wins, and things that worked…"
+                disabled={!currentMember}
+              />
+              <div className="sprint-review-compose-actions">
+                <button
+                  type="button"
+                  className="btn btn-primary btn-sm"
+                  disabled={!currentMember || !reviewWellBody.trim()}
+                  onClick={async () => {
+                    if (!currentMember || !reviewWellBody.trim()) return;
+                    await addSprintReview(sprintNum, currentMember.id, reviewWellBody.trim(), 'well');
+                    setReviewWellBody('');
+                    loadReviews();
+                  }}
+                >
+                  Post
+                </button>
+              </div>
+              <ul className="sprint-review-list sprint-review-list--compact">
+                {reviews
+                  .filter(r => r.reviewKind !== 'improve')
+                  .map(r => {
+                    const isOwn = currentMember?.id === r.groupMemberId;
+                    return (
+                      <li key={r.id} className={`sprint-review-item${isOwn ? ' is-own' : ''}`}>
+                        <UserAvatar
+                          member={{ name: r.memberName, color: r.memberColor, avatarInitial: r.memberAvatarInitial }}
+                          size="sm"
+                        />
+                        <div className="sprint-review-item-main">
+                          <div className="sprint-review-item-line">
+                            <span className="sprint-review-item-name">{r.memberName}</span>
+                            <time className="sprint-review-item-date" dateTime={r.createdAt}>
+                              {new Date(r.createdAt).toLocaleDateString()}
+                            </time>
+                            {isOwn ? (
+                              <span className="sprint-review-hover-actions">
+                                <button
+                                  type="button"
+                                  className="btn btn-ghost btn-xs"
+                                  onClick={() =>
+                                    setEditingReview({ id: r.id, content: r.content, reviewKind: 'well' })
+                                  }
+                                >
+                                  Edit
+                                </button>
+                                <button
+                                  type="button"
+                                  className="btn btn-ghost btn-xs text-danger"
+                                  onClick={() => setDeleteConfirm({ type: 'review', id: r.id })}
+                                >
+                                  Delete
+                                </button>
+                              </span>
+                            ) : null}
+                          </div>
+                          <p className="sprint-review-item-content">{r.content}</p>
+                        </div>
+                      </li>
+                    );
+                  })}
+              </ul>
+            </div>
+            <div className="sprint-retro-column">
+              <h3 className="sprint-retro-column-title">What can we improve on</h3>
+              <textarea
+                className="sprint-review-textarea"
+                rows={3}
+                value={reviewImproveBody}
+                onChange={e => setReviewImproveBody(e.target.value)}
+                placeholder="Blockers, lessons, and ideas for next sprint…"
+                disabled={!currentMember}
+              />
+              <div className="sprint-review-compose-actions">
+                <button
+                  type="button"
+                  className="btn btn-primary btn-sm"
+                  disabled={!currentMember || !reviewImproveBody.trim()}
+                  onClick={async () => {
+                    if (!currentMember || !reviewImproveBody.trim()) return;
+                    await addSprintReview(sprintNum, currentMember.id, reviewImproveBody.trim(), 'improve');
+                    setReviewImproveBody('');
+                    loadReviews();
+                  }}
+                >
+                  Post
+                </button>
+              </div>
+              <ul className="sprint-review-list sprint-review-list--compact">
+                {reviews
+                  .filter(r => r.reviewKind === 'improve')
+                  .map(r => {
+                    const isOwn = currentMember?.id === r.groupMemberId;
+                    return (
+                      <li key={r.id} className={`sprint-review-item${isOwn ? ' is-own' : ''}`}>
+                        <UserAvatar
+                          member={{ name: r.memberName, color: r.memberColor, avatarInitial: r.memberAvatarInitial }}
+                          size="sm"
+                        />
+                        <div className="sprint-review-item-main">
+                          <div className="sprint-review-item-line">
+                            <span className="sprint-review-item-name">{r.memberName}</span>
+                            <time className="sprint-review-item-date" dateTime={r.createdAt}>
+                              {new Date(r.createdAt).toLocaleDateString()}
+                            </time>
+                            {isOwn ? (
+                              <span className="sprint-review-hover-actions">
+                                <button
+                                  type="button"
+                                  className="btn btn-ghost btn-xs"
+                                  onClick={() =>
+                                    setEditingReview({ id: r.id, content: r.content, reviewKind: 'improve' })
+                                  }
+                                >
+                                  Edit
+                                </button>
+                                <button
+                                  type="button"
+                                  className="btn btn-ghost btn-xs text-danger"
+                                  onClick={() => setDeleteConfirm({ type: 'review', id: r.id })}
+                                >
+                                  Delete
+                                </button>
+                              </span>
+                            ) : null}
+                          </div>
+                          <p className="sprint-review-item-content">{r.content}</p>
+                        </div>
+                      </li>
+                    );
+                  })}
+              </ul>
+            </div>
           </div>
-        </div>
-        <ul className="sprint-review-list">
-          {reviews.map(r => {
-            const isOwn = currentMember?.id === r.groupMemberId;
-            return (
-              <li key={r.id} className={`sprint-review-item${isOwn ? ' is-own' : ''}`}>
-                <UserAvatar member={{ name: r.memberName, color: r.memberColor, avatarInitial: r.memberAvatarInitial }} size="sm" />
-                <div className="sprint-review-item-main">
-                  <div className="sprint-review-item-line">
-                    <span className="sprint-review-item-name">{r.memberName}</span>
-                    <time className="sprint-review-item-date" dateTime={r.createdAt}>
-                      {new Date(r.createdAt).toLocaleDateString()}
-                    </time>
-                    {isOwn ? (
-                      <span className="sprint-review-hover-actions">
-                        <button
-                          type="button"
-                          className="btn btn-ghost btn-xs"
-                          onClick={() => setEditingReview({ id: r.id, content: r.content })}
-                        >
-                          Edit
-                        </button>
-                        <button type="button" className="btn btn-ghost btn-xs text-danger" onClick={() => setDeleteConfirm({ type: 'review', id: r.id })}>
-                          Delete
-                        </button>
-                      </span>
-                    ) : null}
-                  </div>
-                  <p className="sprint-review-item-content">{r.content}</p>
-                </div>
-              </li>
-            );
-          })}
-        </ul>
-        {reviews.length === 0 ? <p className="sprint-review-empty">No notes for this sprint yet.</p> : null}
+          {reviews.length === 0 ? <p className="sprint-review-empty">No retrospective notes for this sprint yet.</p> : null}
         </div>
       </section>
 
@@ -535,8 +713,16 @@ export default function ScrumPage({ currentMember, members }: Props) {
             <div className="modal-body">
               <div className="form-row">
                 <label>Note</label>
-                <textarea rows={4} value={editingReview.content} onChange={e => setEditingReview({ ...editingReview, content: e.target.value })} />
+                <textarea
+                  rows={4}
+                  value={editingReview.content}
+                  onChange={e => setEditingReview({ ...editingReview, content: e.target.value })}
+                />
               </div>
+              <p className="text-muted text-sm">
+                Section:{' '}
+                {editingReview.reviewKind === 'improve' ? 'What can we improve on' : 'What went well'}
+              </p>
             </div>
             <div className="modal-footer">
               <button type="button" className="btn btn-secondary" onClick={() => setEditingReview(null)}>
@@ -547,7 +733,11 @@ export default function ScrumPage({ currentMember, members }: Props) {
                 className="btn btn-primary"
                 disabled={!editingReview.content.trim()}
                 onClick={async () => {
-                  await updateSprintReview(editingReview.id, editingReview.content.trim());
+                  await updateSprintReview(
+                    editingReview.id,
+                    editingReview.content.trim(),
+                    editingReview.reviewKind,
+                  );
                   setEditingReview(null);
                   loadReviews();
                 }}

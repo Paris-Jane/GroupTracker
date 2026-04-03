@@ -7,6 +7,7 @@ import {
   deleteTask,
   updateTaskStatus,
   assignTask,
+  patchTaskFields,
 } from '../api/client';
 import type { TaskItem, GroupMember, TaskStatus, TaskPriority, CreateTaskDto } from '../types';
 import Avatar from '../components/common/Avatar';
@@ -16,7 +17,14 @@ import TaskFormModal from '../components/Tasks/TaskFormModal';
 import QuickTasksModal from '../components/Tasks/QuickTasksModal';
 import PlanningPokerModal from '../components/games/PlanningPokerModal';
 import PickTasksModal from '../components/games/PickTasksModal';
-import { TaskFilters, type TasksSortKey, memberChipColor } from '../components/Tasks/TaskFilters';
+import {
+  TaskFilters,
+  type TasksSortKey,
+  type TaskColumnKey,
+  ALL_TASK_COLUMN_KEYS,
+  DEFAULT_TASK_COLUMN_KEYS,
+  memberChipColor,
+} from '../components/Tasks/TaskFilters';
 
 interface Props {
   currentMember: GroupMember | null;
@@ -72,17 +80,73 @@ function statusChipLabel(s: TaskStatus) {
 
 const SPRINT_PILL_MAX = 8;
 
+const TASK_COLS_STORAGE_KEY = 'ph.taskCols.v1';
+
+function loadTaskColumns(): TaskColumnKey[] {
+  try {
+    const raw = localStorage.getItem(TASK_COLS_STORAGE_KEY);
+    if (!raw) return [...DEFAULT_TASK_COLUMN_KEYS];
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return [...DEFAULT_TASK_COLUMN_KEYS];
+    const allowed = new Set<TaskColumnKey>(ALL_TASK_COLUMN_KEYS);
+    const out = parsed.filter((x): x is TaskColumnKey => typeof x === 'string' && allowed.has(x as TaskColumnKey));
+    if (!out.includes('task')) out.unshift('task');
+    return out.length ? ALL_TASK_COLUMN_KEYS.filter(k => out.includes(k)) : [...DEFAULT_TASK_COLUMN_KEYS];
+  } catch {
+    return [...DEFAULT_TASK_COLUMN_KEYS];
+  }
+}
+
+function taskListGridColumns(batchMode: boolean, cols: TaskColumnKey[]): string {
+  const parts: string[] = [];
+  if (batchMode) parts.push('40px');
+  const w: Record<TaskColumnKey, string> = {
+    task: 'minmax(0, 1fr)',
+    sprint: '52px',
+    deadline: '88px',
+    status: '118px',
+    users: 'minmax(112px, auto)',
+    priority: '76px',
+    updated: '112px',
+    notes: 'minmax(100px, 1fr)',
+  };
+  for (const c of cols) parts.push(w[c]);
+  return parts.join(' ');
+}
+
+function formatUpdatedShort(iso: string) {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '—';
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
 // ── Task row ───────────────────────────────────────────────────────────────
 
 interface TaskRowProps {
   task: TaskItem;
   members: GroupMember[];
+  visibleColumns: TaskColumnKey[];
+  batchMode: boolean;
+  selected: boolean;
+  onToggleSelect: () => void;
+  gridTemplateColumns: string;
   onOpen: () => void;
   onStatusCycle: () => void;
   onAssigneesChange: (memberIds: number[]) => Promise<void>;
 }
 
-function TaskRow({ task, members, onOpen, onStatusCycle, onAssigneesChange }: TaskRowProps) {
+function TaskRow({
+  task,
+  members,
+  visibleColumns,
+  batchMode,
+  selected,
+  onToggleSelect,
+  gridTemplateColumns,
+  onOpen,
+  onStatusCycle,
+  onAssigneesChange,
+}: TaskRowProps) {
   const [assignOpen, setAssignOpen] = useState(false);
   const assignWrapRef = useRef<HTMLDivElement>(null);
   const overdue = isOverdue(task.deadline, task.status);
@@ -112,6 +176,149 @@ function TaskRow({ task, members, onOpen, onStatusCycle, onAssigneesChange }: Ta
   };
 
   const dueText = formatDeadlineShort(task.deadline);
+  const notesPreview = task.notes?.trim()
+    ? task.notes.trim().length > 80
+      ? `${task.notes.trim().slice(0, 80)}…`
+      : task.notes.trim()
+    : null;
+
+  const renderColumn = (key: TaskColumnKey) => {
+    switch (key) {
+      case 'task':
+        return (
+          <div className="task-row-name">
+            <span className={task.status === 'Completed' ? 'task-row-title task-row-title--done' : 'task-row-title'}>
+              {task.name}
+            </span>
+          </div>
+        );
+      case 'sprint':
+        return (
+          <div className="task-row-sprint">
+            {task.sprintNumber != null ? (
+              <span className="task-row-sprint-num">S{task.sprintNumber}</span>
+            ) : (
+              <span className="text-muted text-xs">—</span>
+            )}
+          </div>
+        );
+      case 'deadline':
+        return (
+          <div className="task-row-due-col">
+            {dueText ? (
+              <span
+                className={`task-row-due-inline${overdue ? ' task-row-due-inline--late' : ''}${dueToday && !overdue ? ' task-row-due-inline--today' : ''}`}
+              >
+                {dueText}
+              </span>
+            ) : (
+              <span className="text-muted text-xs">—</span>
+            )}
+          </div>
+        );
+      case 'status':
+        return (
+          <div className="task-row-status">
+            <button
+              type="button"
+              className={`task-status-chip task-status-chip--${statusClass}`}
+              onClick={e => {
+                e.stopPropagation();
+                onStatusCycle();
+              }}
+              aria-label={`Status: ${statusChipLabel(task.status)}. Click for next: ${statusChipLabel(nextTaskStatus(task.status))}.`}
+            >
+              {statusChipLabel(task.status)}
+            </button>
+          </div>
+        );
+      case 'users':
+        return (
+          <div
+            className="task-row-assignees"
+            ref={assignWrapRef}
+            onClick={e => e.stopPropagation()}
+            onKeyDown={e => e.stopPropagation()}
+          >
+            {task.assignments.length > 0 ? (
+              <button
+                type="button"
+                className="task-row-avatar-trigger"
+                onClick={() => setAssignOpen(o => !o)}
+                aria-expanded={assignOpen}
+                aria-label="Edit assignees"
+              >
+                <div className="task-row-avatar-stack">
+                  {task.assignments.map(a => (
+                    <Avatar
+                      key={a.id}
+                      initial={a.memberAvatarInitial}
+                      color={a.memberColor}
+                      size="sm"
+                      name={a.memberName}
+                    />
+                  ))}
+                </div>
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="task-assign-add"
+                onClick={() => setAssignOpen(o => !o)}
+                aria-expanded={assignOpen}
+                aria-label="Assign people"
+              >
+                <span aria-hidden>+</span>
+              </button>
+            )}
+            {assignOpen && (
+              <div className="task-assign-popover task-assign-popover--icons" role="dialog" aria-label="Choose assignees">
+                <p className="task-assign-popover-hint">Select people</p>
+                <div className="task-assign-popover-avatars">
+                  {members.map(m => {
+                    const on = assignedIds.includes(m.id);
+                    const c = memberChipColor(m);
+                    const initial = (m.avatarInitial ?? m.name.charAt(0) ?? '?').toUpperCase();
+                    return (
+                      <button
+                        key={m.id}
+                        type="button"
+                        className={`task-assign-icon-btn${on ? ' task-assign-icon-btn--on' : ''}`}
+                        style={{ '--assign-icon-bg': c } as CSSProperties}
+                        title={m.name}
+                        aria-label={m.name}
+                        aria-pressed={on}
+                        onClick={() => void toggleAssignee(m.id)}
+                      >
+                        <span className="task-assign-icon-circle">{initial}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      case 'priority':
+        return (
+          <div className="task-row-pri-inline">
+            <span className="task-row-pri-text">{task.priority}</span>
+          </div>
+        );
+      case 'updated':
+        return (
+          <div className="task-row-updated text-muted text-xs">{formatUpdatedShort(task.updatedAt)}</div>
+        );
+      case 'notes':
+        return (
+          <div className="task-row-notes-inline text-muted text-xs" title={task.notes ?? undefined}>
+            {notesPreview ?? '—'}
+          </div>
+        );
+      default:
+        return null;
+    }
+  };
 
   return (
     <div className="task-row-wrap">
@@ -119,6 +326,7 @@ function TaskRow({ task, members, onOpen, onStatusCycle, onAssigneesChange }: Ta
         role="button"
         tabIndex={0}
         className={`task-row task-row--${statusClass}${overdue ? ' task-row--overdue' : ''}${dueToday && !overdue ? ' task-row--due-today' : ''}`}
+        style={{ gridTemplateColumns }}
         onClick={onOpen}
         onKeyDown={e => {
           if (e.key === 'Enter' || e.key === ' ') {
@@ -127,106 +335,21 @@ function TaskRow({ task, members, onOpen, onStatusCycle, onAssigneesChange }: Ta
           }
         }}
       >
-        <div className="task-row-name">
-          <span className={task.status === 'Completed' ? 'task-row-title task-row-title--done' : 'task-row-title'}>
-            {task.name}
-          </span>
-        </div>
-        <div className="task-row-sprint">
-          {task.sprintNumber != null ? (
-            <span className="task-row-sprint-num">S{task.sprintNumber}</span>
-          ) : (
-            <span className="text-muted text-xs">—</span>
-          )}
-        </div>
-        <div className="task-row-due-col">
-          {dueText ? (
-            <span
-              className={`task-row-due-inline${overdue ? ' task-row-due-inline--late' : ''}${dueToday && !overdue ? ' task-row-due-inline--today' : ''}`}
-            >
-              {dueText}
-            </span>
-          ) : (
-            <span className="text-muted text-xs">—</span>
-          )}
-        </div>
-        <div className="task-row-status">
-          <button
-            type="button"
-            className={`task-status-chip task-status-chip--${statusClass}`}
-            onClick={e => {
-              e.stopPropagation();
-              onStatusCycle();
-            }}
-            aria-label={`Status: ${statusChipLabel(task.status)}. Click for next: ${statusChipLabel(nextTaskStatus(task.status))}.`}
-          >
-            {statusChipLabel(task.status)}
-          </button>
-        </div>
-        <div
-          className="task-row-assignees"
-          ref={assignWrapRef}
-          onClick={e => e.stopPropagation()}
-          onKeyDown={e => e.stopPropagation()}
-        >
-          {task.assignments.length > 0 ? (
-            <button
-              type="button"
-              className="task-row-avatar-trigger"
-              onClick={() => setAssignOpen(o => !o)}
-              aria-expanded={assignOpen}
-              aria-label="Edit assignees"
-            >
-              <div className="task-row-avatar-stack">
-                {task.assignments.map(a => (
-                  <Avatar
-                    key={a.id}
-                    initial={a.memberAvatarInitial}
-                    color={a.memberColor}
-                    size="sm"
-                    name={a.memberName}
-                  />
-                ))}
-              </div>
-            </button>
-          ) : (
-            <button
-              type="button"
-              className="task-assign-add"
-              onClick={() => setAssignOpen(o => !o)}
-              aria-expanded={assignOpen}
-              aria-label="Assign people"
-            >
-              <span aria-hidden>+</span>
-            </button>
-          )}
-          {assignOpen && (
-            <div className="task-assign-popover task-assign-popover--icons" role="dialog" aria-label="Choose assignees">
-              <p className="task-assign-popover-hint">Select people</p>
-              <div className="task-assign-popover-avatars">
-                {members.map(m => {
-                  const on = assignedIds.includes(m.id);
-                  const c = memberChipColor(m);
-                  const initial = (m.avatarInitial ?? m.name.charAt(0) ?? '?').toUpperCase();
-                  return (
-                    <button
-                      key={m.id}
-                      type="button"
-                      className={`task-assign-icon-btn${on ? ' task-assign-icon-btn--on' : ''}`}
-                      style={{ '--assign-icon-bg': c } as CSSProperties}
-                      title={m.name}
-                      aria-label={m.name}
-                      aria-pressed={on}
-                      onClick={() => void toggleAssignee(m.id)}
-                    >
-                      <span className="task-assign-icon-circle">{initial}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-        </div>
+        {batchMode ? (
+          <div className="task-row-select" onClick={e => e.stopPropagation()} onKeyDown={e => e.stopPropagation()}>
+            <input
+              type="checkbox"
+              checked={selected}
+              onChange={() => onToggleSelect()}
+              aria-label={`Select ${task.name}`}
+            />
+          </div>
+        ) : null}
+        {visibleColumns.map(col => (
+          <div key={col} className={`task-row-cell task-row-cell--${col}`}>
+            {renderColumn(col)}
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -250,6 +373,28 @@ export default function TasksPage({ currentMember, members }: Props) {
   const [filterStatus, setFilterStatus] = useState<TaskStatus | ''>('');
   const [filterSprint, setFilterSprint] = useState<number | ''>('');
   const [filterAssigneeIds, setFilterAssigneeIds] = useState<number[]>([]);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [visibleColumns, setVisibleColumns] = useState<TaskColumnKey[]>(loadTaskColumns);
+  const [batchMode, setBatchMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<number[]>([]);
+  const [bulkAssigneeIds, setBulkAssigneeIds] = useState<number[]>([]);
+  const [bulkSprint, setBulkSprint] = useState<number | ''>('');
+  const [bulkDeadline, setBulkDeadline] = useState('');
+  const [bulkStatus, setBulkStatus] = useState<TaskStatus | ''>('');
+  const [bulkPriority, setBulkPriority] = useState<TaskPriority | ''>('');
+  const [bulkDeleteIds, setBulkDeleteIds] = useState<number[] | null>(null);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(TASK_COLS_STORAGE_KEY, JSON.stringify(visibleColumns));
+    } catch {
+      /* ignore */
+    }
+  }, [visibleColumns]);
+
+  useEffect(() => {
+    if (!batchMode) setSelectedIds([]);
+  }, [batchMode]);
 
   const load = useCallback(() => {
     getTasks().then(setTasks);
@@ -357,16 +502,87 @@ export default function TasksPage({ currentMember, members }: Props) {
     }
   };
 
+  const gridCols = useMemo(
+    () => taskListGridColumns(batchMode, visibleColumns),
+    [batchMode, visibleColumns],
+  );
+
+  const toggleRowSelect = (id: number) => {
+    setSelectedIds(prev => (prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]));
+  };
+
+  const selectAllVisible = () => {
+    if (visible.length === 0) return;
+    const allSel = visible.every(t => selectedIds.includes(t.id));
+    if (allSel) setSelectedIds([]);
+    else setSelectedIds(visible.map(t => t.id));
+  };
+
+  const toggleBulkMember = (id: number) => {
+    setBulkAssigneeIds(prev => (prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]));
+  };
+
+  const applyBulkAssignees = async () => {
+    if (selectedIds.length === 0) return;
+    for (const id of selectedIds) {
+      await assignTask(id, bulkAssigneeIds, currentMember?.id);
+    }
+    setSelectedIds([]);
+    load();
+  };
+
+  const applyBulkSprint = async () => {
+    if (selectedIds.length === 0 || bulkSprint === '') return;
+    for (const id of selectedIds) {
+      await patchTaskFields(id, { sprintNumber: bulkSprint }, currentMember?.id, 'Updated', 'Bulk sprint');
+    }
+    setBulkSprint('');
+    setSelectedIds([]);
+    load();
+  };
+
+  const applyBulkDeadline = async () => {
+    if (selectedIds.length === 0 || !bulkDeadline.trim()) return;
+    for (const id of selectedIds) {
+      await patchTaskFields(
+        id,
+        { deadline: bulkDeadline },
+        currentMember?.id,
+        'Updated',
+        'Bulk deadline',
+      );
+    }
+    setBulkDeadline('');
+    setSelectedIds([]);
+    load();
+  };
+
+  const applyBulkStatus = async () => {
+    if (selectedIds.length === 0 || !bulkStatus) return;
+    for (const id of selectedIds) {
+      await updateTaskStatus(id, bulkStatus, currentMember?.id);
+    }
+    setBulkStatus('');
+    setSelectedIds([]);
+    load();
+  };
+
+  const applyBulkPriority = async () => {
+    if (selectedIds.length === 0 || !bulkPriority) return;
+    for (const id of selectedIds) {
+      await patchTaskFields(id, { priority: bulkPriority }, currentMember?.id, 'Updated', 'Bulk priority');
+    }
+    setBulkPriority('');
+    setSelectedIds([]);
+    load();
+  };
+
   const hasTasks = tasks.length > 0;
   const emptyFromFilters = hasTasks && visible.length === 0;
 
   return (
     <div className="page tasks-page">
       <header className="page-title-block page-title-block--split">
-        <div>
-          <h1 className="page-title">Tasks</h1>
-          <p className="page-subtitle">All project work in one place</p>
-        </div>
         <div className="page-actions">
           <button type="button" className="btn btn-ghost btn-sm" onClick={() => setShowPoker(true)}>
             Poker
@@ -382,6 +598,13 @@ export default function TasksPage({ currentMember, members }: Props) {
           </button>
           <button type="button" className="btn btn-primary btn-sm" onClick={() => setEditingTask('new')}>
             New task
+          </button>
+          <button
+            type="button"
+            className={`btn btn-secondary btn-sm${batchMode ? ' is-on' : ''}`}
+            onClick={() => setBatchMode(b => !b)}
+          >
+            Batch edit
           </button>
         </div>
       </header>
@@ -409,14 +632,141 @@ export default function TasksPage({ currentMember, members }: Props) {
         overdueCount={overdueCount}
         activeSummary={activeSummary}
         onClearAllFilters={clearAllFilters}
+        advancedOpen={advancedOpen}
+        onToggleAdvanced={() => setAdvancedOpen(o => !o)}
+        visibleColumns={visibleColumns}
+        onChangeVisibleColumns={setVisibleColumns}
       />
 
-      <div className="task-list-header" aria-hidden>
-        <span>Task</span>
-        <span>Sprint</span>
-        <span>Deadline</span>
-        <span>Status</span>
-        <span className="task-list-header-assignee">User</span>
+      {batchMode && selectedIds.length > 0 ? (
+        <div className="tasks-batch-bar panel">
+          <div className="tasks-batch-bar-head">
+            <strong>{selectedIds.length}</strong>
+            <span className="text-muted text-sm"> tasks selected</span>
+            <button type="button" className="btn btn-ghost btn-sm" onClick={() => setSelectedIds([])}>
+              Clear selection
+            </button>
+          </div>
+          <div className="tasks-batch-bar-section">
+            <span className="tasks-batch-label">Assignees</span>
+            <div className="tasks-batch-chips">
+              {members.map(m => (
+                <button
+                  key={m.id}
+                  type="button"
+                  className={`tasks-batch-chip${bulkAssigneeIds.includes(m.id) ? ' is-on' : ''}`}
+                  onClick={() => toggleBulkMember(m.id)}
+                >
+                  {m.name}
+                </button>
+              ))}
+            </div>
+            <button type="button" className="btn btn-secondary btn-sm" onClick={() => void applyBulkAssignees()}>
+              Set assignees
+            </button>
+          </div>
+          <div className="tasks-batch-bar-section tasks-batch-bar-row">
+            <label className="tasks-batch-label">
+              Sprint
+              <select
+                className="select-compact ml-1"
+                value={bulkSprint === '' ? '' : String(bulkSprint)}
+                onChange={e => setBulkSprint(e.target.value === '' ? '' : Number(e.target.value))}
+              >
+                <option value="">Choose…</option>
+                {sprintNumbers.map(n => (
+                  <option key={n} value={n}>
+                    {n}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button type="button" className="btn btn-secondary btn-sm" onClick={() => void applyBulkSprint()}>
+              Apply sprint
+            </button>
+            <label className="tasks-batch-label">
+              Deadline
+              <input
+                type="date"
+                className="ml-1"
+                value={bulkDeadline}
+                onChange={e => setBulkDeadline(e.target.value)}
+              />
+            </label>
+            <button type="button" className="btn btn-secondary btn-sm" onClick={() => void applyBulkDeadline()}>
+              Apply deadline
+            </button>
+          </div>
+          <div className="tasks-batch-bar-section tasks-batch-bar-row">
+            <label className="tasks-batch-label">
+              Status
+              <select
+                className="select-compact ml-1"
+                value={bulkStatus}
+                onChange={e => setBulkStatus(e.target.value as TaskStatus | '')}
+              >
+                <option value="">Choose…</option>
+                <option value="NotStarted">To do</option>
+                <option value="InProgress">In progress</option>
+                <option value="Completed">Done</option>
+              </select>
+            </label>
+            <button type="button" className="btn btn-secondary btn-sm" onClick={() => void applyBulkStatus()}>
+              Apply status
+            </button>
+            <label className="tasks-batch-label">
+              Priority
+              <select
+                className="select-compact ml-1"
+                value={bulkPriority}
+                onChange={e => setBulkPriority(e.target.value as TaskPriority | '')}
+              >
+                <option value="">Choose…</option>
+                <option value="High">High</option>
+                <option value="Medium">Medium</option>
+                <option value="Low">Low</option>
+              </select>
+            </label>
+            <button type="button" className="btn btn-secondary btn-sm" onClick={() => void applyBulkPriority()}>
+              Apply priority
+            </button>
+            <button type="button" className="btn btn-danger btn-sm" onClick={() => setBulkDeleteIds([...selectedIds])}>
+              Delete selected
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      <div className="task-list-header" style={{ gridTemplateColumns: gridCols }} aria-hidden>
+        {batchMode ? (
+          <span className="task-list-header-select">
+            <input
+              type="checkbox"
+              checked={visible.length > 0 && visible.every(t => selectedIds.includes(t.id))}
+              onChange={selectAllVisible}
+              aria-label="Select all visible tasks"
+            />
+          </span>
+        ) : null}
+        {visibleColumns.map(col => (
+          <span key={col} className={col === 'users' ? 'task-list-header-assignee' : undefined}>
+            {col === 'task'
+              ? 'Task'
+              : col === 'sprint'
+                ? 'Sprint'
+                : col === 'deadline'
+                  ? 'Deadline'
+                  : col === 'status'
+                    ? 'Status'
+                    : col === 'users'
+                      ? 'Users'
+                      : col === 'priority'
+                        ? 'Priority'
+                        : col === 'updated'
+                          ? 'Updated'
+                          : 'Notes'}
+          </span>
+        ))}
       </div>
 
       {visible.length === 0 ? (
@@ -446,6 +796,11 @@ export default function TasksPage({ currentMember, members }: Props) {
               key={task.id}
               task={task}
               members={members}
+              visibleColumns={visibleColumns}
+              batchMode={batchMode}
+              selected={selectedIds.includes(task.id)}
+              onToggleSelect={() => toggleRowSelect(task.id)}
+              gridTemplateColumns={gridCols}
               onOpen={() => setEditingTask(task)}
               onStatusCycle={async () => {
                 await updateTaskStatus(task.id, nextTaskStatus(task.status), currentMember?.id);
@@ -478,6 +833,20 @@ export default function TasksPage({ currentMember, members }: Props) {
             load();
           }}
           onCancel={() => setDeletingId(null)}
+        />
+      )}
+      {bulkDeleteIds && bulkDeleteIds.length > 0 && (
+        <ConfirmDialog
+          message={`Delete ${bulkDeleteIds.length} task(s)? This cannot be undone.`}
+          onConfirm={async () => {
+            for (const id of bulkDeleteIds) {
+              await deleteTask(id);
+            }
+            setBulkDeleteIds(null);
+            setSelectedIds([]);
+            load();
+          }}
+          onCancel={() => setBulkDeleteIds(null)}
         />
       )}
       {showBulkImport && (

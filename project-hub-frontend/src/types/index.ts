@@ -68,6 +68,7 @@ export interface QuickLink {
   url: string;
   category?: string;
   notes?: string;
+  sortOrder: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -81,6 +82,7 @@ export interface ResourceItemRow {
   category?: string;
   url?: string;
   notes?: string;
+  sortOrder: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -182,6 +184,8 @@ export interface SprintGoal {
   sprintDueDate?: string;
 }
 
+export type SprintReviewKind = 'well' | 'improve';
+
 export interface SprintReview {
   id: number;
   sprintNumber: number;
@@ -190,6 +194,7 @@ export interface SprintReview {
   memberColor?: string;
   memberAvatarInitial?: string;
   content: string;
+  reviewKind: SprintReviewKind;
   createdAt: string;
 }
 
@@ -246,8 +251,18 @@ export interface BulkImportAiBundle {
   tasks: BulkImportTaskDto[];
 }
 
-export const SCHEDULE_WEEK_START = '2026-04-06';
-/** Inclusive end of the week shown on the schedule (7 days from start). */
-export const SCHEDULE_WEEK_END = '2026-04-12';
+/** Monday–Friday ISO range for the calendar week containing `date` (local). */
+export function scheduleWeekMonFriContaining(date = new Date()): { start: string; end: string } {
+  const d = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 12, 0, 0, 0);
+  const dow = d.getDay();
+  const mondayOffset = dow === 0 ? -6 : 1 - dow;
+  const mon = new Date(d);
+  mon.setDate(d.getDate() + mondayOffset);
+  const fri = new Date(mon);
+  fri.setDate(mon.getDate() + 4);
+  const iso = (x: Date) =>
+    `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`;
+  return { start: iso(mon), end: iso(fri) };
+}
 
 export const POKER_DECK = [0, 1, 2, 3, 5, 8, 13] as const;

@@ -19,25 +19,50 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     try {
-      const raw = sessionStorage.getItem(STORAGE_KEY);
+      let raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) {
+        raw = sessionStorage.getItem(STORAGE_KEY);
+        if (raw) {
+          localStorage.setItem(STORAGE_KEY, raw);
+          sessionStorage.removeItem(STORAGE_KEY);
+        }
+      }
       if (raw) setUser(JSON.parse(raw) as GroupMember);
     } catch {
+      localStorage.removeItem(STORAGE_KEY);
       sessionStorage.removeItem(STORAGE_KEY);
     }
     setLoading(false);
+  }, []);
+
+  useEffect(() => {
+    const onStorage = (e: StorageEvent) => {
+      if (e.key !== STORAGE_KEY) return;
+      if (e.newValue) {
+        try {
+          setUser(JSON.parse(e.newValue) as GroupMember);
+        } catch {
+          setUser(null);
+        }
+      } else {
+        setUser(null);
+      }
+    };
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
   }, []);
 
   const login = useCallback(async (username: string, password: string) => {
     const m = await loginMember(username, password);
     if (!m) return false;
     setUser(m);
-    sessionStorage.setItem(STORAGE_KEY, JSON.stringify(m));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(m));
     return true;
   }, []);
 
   const logout = useCallback(() => {
     setUser(null);
-    sessionStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem(STORAGE_KEY);
   }, []);
 
   return (

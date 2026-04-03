@@ -1,13 +1,15 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useState, useMemo, type ReactNode } from 'react';
 import {
   getLinks,
   createLink,
   updateLink,
   deleteLink,
+  reorderQuickLinks,
   getResourceRows,
   createResourceRow,
   updateResourceRow,
   deleteResourceRow,
+  reorderResourceRows,
   getLoginItems,
   saveLoginItem,
   deleteLoginItem,
@@ -31,10 +33,10 @@ interface Props {
 }
 
 const CLASS_LABELS: Record<ClassLinkCategory, string> = {
-  PM401: '401 PM',
+  PM401: '401 Project',
   Hilton413: '413 Hilton',
   Cyber414: '414 Cyber',
-  MLR455: '455 MLR',
+  MLR455: '455 Machine',
 };
 
 type ManageScope =
@@ -270,7 +272,7 @@ export default function ResourcesPage({}: Props) {
       {manageScope?.kind === 'quick' && (
         <ManageListModal
           title="Manage quick links"
-          onClose={() => setManageScope(null)}
+          reorderable
           rows={links.map(l => ({
             id: l.id,
             primary: l.url || '(no URL)',
@@ -280,13 +282,18 @@ export default function ResourcesPage({}: Props) {
             },
             onDelete: () => deleteLink(l.id).then(load),
           }))}
+          onReorder={async ids => {
+            await reorderQuickLinks(ids);
+            await load();
+          }}
+          onClose={() => setManageScope(null)}
         />
       )}
 
       {manageScope?.kind === 'resource' && (
         <ManageListModal
           title={manageScope.section === 'ProjectResource' ? 'Manage project resources' : 'Manage other links'}
-          onClose={() => setManageScope(null)}
+          reorderable
           rows={bySection(manageScope.section).map(r => ({
             id: r.id,
             primary: r.url || '(no URL)',
@@ -296,24 +303,34 @@ export default function ResourcesPage({}: Props) {
             },
             onDelete: () => deleteResourceRow(r.id).then(load),
           }))}
+          onReorder={async ids => {
+            await reorderResourceRows(ids);
+            await load();
+          }}
+          onClose={() => setManageScope(null)}
         />
       )}
 
       {manageScope?.kind === 'class' && (
         <ManageListModal
           title={`Manage ${CLASS_LABELS[manageScope.cat]}`}
-          onClose={() => setManageScope(null)}
+          reorderable
           rows={classLinks
             .filter(r => r.classCategory === manageScope.cat)
             .map(r => ({
               id: r.id,
-              primary: r.url || '(no URL)',
+              primary: r.url || r.title || '(no URL)',
               onEdit: () => {
                 setManageScope(null);
                 setEditingResource(r);
               },
               onDelete: () => deleteResourceRow(r.id).then(load),
             }))}
+          onReorder={async ids => {
+            await reorderResourceRows(ids);
+            await load();
+          }}
+          onClose={() => setManageScope(null)}
         />
       )}
 
@@ -323,7 +340,11 @@ export default function ResourcesPage({}: Props) {
           onClose={() => setEditingLink(null)}
           onSave={async d => {
             if (editingLink === 'new') await createLink(d);
-            else await updateLink(editingLink.id, d);
+            else
+              await updateLink(editingLink.id, {
+                ...d,
+                sortOrder: d.sortOrder ?? editingLink.sortOrder,
+              });
             setEditingLink(null);
             load();
           }}
@@ -335,9 +356,9 @@ export default function ResourcesPage({}: Props) {
           initial={editingResource}
           onClose={() => setEditingResource(null)}
           onSave={async row => {
-            const { id, ...rest } = row;
+            const { id, sortOrder, ...rest } = row;
             if (id != null) {
-              await updateResourceRow(id, rest);
+              await updateResourceRow(id, { ...rest, sortOrder: sortOrder ?? 0 });
             } else {
               await createResourceRow(rest);
             }
@@ -406,12 +427,44 @@ function UrlResourceCard({
 function ManageListModal({
   title,
   rows,
+  reorderable,
+  onReorder,
   onClose,
 }: {
   title: string;
   rows: { id: number; primary: string; onEdit: () => void; onDelete: () => Promise<void> }[];
+  reorderable?: boolean;
+  onReorder?: (orderedIds: number[]) => void | Promise<void>;
   onClose: () => void;
 }) {
+  const initialOrder = useMemo(() => rows.map(r => r.id), [rows]);
+  const [order, setOrder] = useState<number[]>(initialOrder);
+  useEffect(() => {
+    setOrder(initialOrder);
+  }, [initialOrder]);
+
+  const orderedRows = useMemo(
+    () => order.map(id => rows.find(r => r.id === id)).filter(Boolean) as typeof rows,
+    [order, rows],
+  );
+
+  const move = (index: number, dir: -1 | 1) => {
+    const next = index + dir;
+    if (next < 0 || next >= order.length) return;
+    setOrder(o => {
+      const copy = [...o];
+      const t = copy[index];
+      copy[index] = copy[next];
+      copy[next] = t;
+      return copy;
+    });
+  };
+
+  const handleDone = async () => {
+    if (reorderable && onReorder && order.length) await onReorder(order);
+    onClose();
+  };
+
   return (
     <div className="modal-overlay">
       <div className="modal modal-lg">
@@ -422,12 +475,37 @@ function ManageListModal({
           </button>
         </div>
         <div className="modal-body">
+          {reorderable ? (
+            <p className="text-muted text-sm mb-3">Use the arrows to change order, then choose Done to save.</p>
+          ) : null}
           {rows.length === 0 ? (
             <p className="empty-hint">Nothing to manage.</p>
           ) : (
             <ul className="manage-links-list">
-              {rows.map(r => (
+              {orderedRows.map((r, index) => (
                 <li key={r.id} className="manage-links-row">
+                  {reorderable ? (
+                    <span className="manage-links-reorder">
+                      <button
+                        type="button"
+                        className="btn btn-ghost btn-xs"
+                        disabled={index === 0}
+                        onClick={() => move(index, -1)}
+                        aria-label="Move up"
+                      >
+                        ↑
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-ghost btn-xs"
+                        disabled={index === orderedRows.length - 1}
+                        onClick={() => move(index, 1)}
+                        aria-label="Move down"
+                      >
+                        ↓
+                      </button>
+                    </span>
+                  ) : null}
                   <span className="manage-links-primary">{r.primary}</span>
                   <div className="manage-links-actions">
                     <button type="button" className="btn btn-ghost btn-xs" onClick={r.onEdit}>
@@ -447,7 +525,7 @@ function ManageListModal({
           )}
         </div>
         <div className="modal-footer">
-          <button type="button" className="btn btn-secondary" onClick={onClose}>
+          <button type="button" className="btn btn-primary" onClick={() => void handleDone()}>
             Done
           </button>
         </div>
@@ -463,7 +541,9 @@ function LinkModal({
 }: {
   link: QuickLink | null;
   onClose: () => void;
-  onSave: (d: Omit<QuickLink, 'id' | 'createdAt' | 'updatedAt'>) => void | Promise<void>;
+  onSave: (
+    d: Omit<QuickLink, 'id' | 'createdAt' | 'updatedAt' | 'sortOrder'> & { sortOrder?: number },
+  ) => void | Promise<void>;
 }) {
   const [title, setTitle] = useState(link?.title ?? '');
   const [url, setUrl] = useState(link?.url ?? '');
@@ -504,14 +584,15 @@ function LinkModal({
             type="button"
             className="btn btn-primary"
             disabled={!url.trim()}
-            onClick={() =>
-              onSave({
+            onClick={() => {
+              const base = {
                 title: title.trim() || url.trim(),
                 url: url.trim(),
                 category: category || undefined,
                 notes: notes || undefined,
-              })
-            }
+              };
+              onSave(link ? { ...base, sortOrder: link.sortOrder } : base);
+            }}
           >
             Save
           </button>
@@ -528,7 +609,12 @@ function ResourceModal({
 }: {
   initial: Partial<ResourceItemRow> & { section: ResourceSection };
   onClose: () => void;
-  onSave: (row: Omit<ResourceItemRow, 'id' | 'createdAt' | 'updatedAt'> & { id?: number }) => void | Promise<void>;
+  onSave: (
+    row: Omit<ResourceItemRow, 'id' | 'createdAt' | 'updatedAt' | 'sortOrder'> & {
+      id?: number;
+      sortOrder?: number;
+    },
+  ) => void | Promise<void>;
 }) {
   const isNew = initial.id == null;
   const lockSection = isNew;
@@ -596,17 +682,21 @@ function ResourceModal({
             type="button"
             className="btn btn-primary"
             disabled={!title.trim()}
-            onClick={() =>
-              onSave({
-                ...(typeof initial.id === 'number' ? { id: initial.id } : {}),
+            onClick={() => {
+              const base = {
                 title,
                 description: description || undefined,
                 url: url || undefined,
                 notes: notes || undefined,
                 section,
                 classCategory: section === 'ClassLink' ? (classCategory as ClassLinkCategory) : undefined,
-              })
-            }
+              };
+              onSave(
+                typeof initial.id === 'number'
+                  ? { ...base, id: initial.id, sortOrder: (initial as ResourceItemRow).sortOrder }
+                  : { ...base },
+              );
+            }}
           >
             Save
           </button>

@@ -19,6 +19,7 @@ import type {
   ProjectSettings,
   SprintGoal,
   SprintReview,
+  SprintReviewKind,
   AdminMember,
   AdminBulkResetOptions,
   ResourceSection,
@@ -615,7 +616,9 @@ export async function deleteSprintGoal(sprintNumber: number): Promise<void> {
 export async function getSprintReviews(sprintNumber: number): Promise<SprintReview[]> {
   const { data, error } = await supabase
     .from('sprint_reviews')
-    .select('id,sprint_number,group_member_id,content,created_at, group_members(name,color,avatar_initial)')
+    .select(
+      'id,sprint_number,group_member_id,content,review_kind,created_at, group_members(name,color,avatar_initial)',
+    )
     .eq('sprint_number', sprintNumber)
     .order('created_at', { ascending: false });
   if (error) err(error, 'Failed to load reviews');
@@ -624,6 +627,7 @@ export async function getSprintReviews(sprintNumber: number): Promise<SprintRevi
     sprint_number: number;
     group_member_id: number;
     content: string;
+    review_kind?: string | null;
     created_at: string;
     group_members: { name: string; color: string | null; avatar_initial: string | null } | null;
   }[]).map(r => ({
@@ -634,21 +638,34 @@ export async function getSprintReviews(sprintNumber: number): Promise<SprintRevi
     memberColor: r.group_members?.color ?? undefined,
     memberAvatarInitial: r.group_members?.avatar_initial ?? undefined,
     content: r.content,
+    reviewKind: (r.review_kind === 'improve' ? 'improve' : 'well') as SprintReviewKind,
     createdAt: r.created_at,
   }));
 }
 
-export async function addSprintReview(sprintNumber: number, memberId: number, content: string): Promise<void> {
+export async function addSprintReview(
+  sprintNumber: number,
+  memberId: number,
+  content: string,
+  reviewKind: SprintReviewKind = 'well',
+): Promise<void> {
   const { error } = await supabase.from('sprint_reviews').insert({
     sprint_number: sprintNumber,
     group_member_id: memberId,
     content,
+    review_kind: reviewKind,
   });
   if (error) err(error, 'Failed to add review');
 }
 
-export async function updateSprintReview(reviewId: number, content: string): Promise<void> {
-  const { error } = await supabase.from('sprint_reviews').update({ content }).eq('id', reviewId);
+export async function updateSprintReview(
+  reviewId: number,
+  content: string,
+  reviewKind?: SprintReviewKind,
+): Promise<void> {
+  const patch: { content: string; review_kind?: SprintReviewKind } = { content };
+  if (reviewKind) patch.review_kind = reviewKind;
+  const { error } = await supabase.from('sprint_reviews').update(patch).eq('id', reviewId);
   if (error) err(error, 'Failed to update review');
 }
 
@@ -748,7 +765,11 @@ export async function deleteScheduleItem(id: number): Promise<void> {
 // ── Quick links ────────────────────────────────────────────────────────────
 
 export const getLinks = async (): Promise<QuickLink[]> => {
-  const { data, error } = await supabase.from('quick_links').select('*').order('title');
+  const { data, error } = await supabase
+    .from('quick_links')
+    .select('*')
+    .order('sort_order', { ascending: true })
+    .order('title');
   if (error) err(error, 'Failed to load links');
   return (data as {
     id: number;
@@ -756,6 +777,7 @@ export const getLinks = async (): Promise<QuickLink[]> => {
     url: string;
     category: string | null;
     notes: string | null;
+    sort_order?: number | null;
     created_at: string;
     updated_at: string;
   }[]).map(r => ({
@@ -764,13 +786,30 @@ export const getLinks = async (): Promise<QuickLink[]> => {
     url: r.url,
     category: r.category ?? undefined,
     notes: r.notes ?? undefined,
+    sortOrder: r.sort_order ?? 0,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
   }));
 };
 
-export const createLink = async (data: Omit<QuickLink, 'id' | 'createdAt' | 'updatedAt'>): Promise<QuickLink> => {
+export async function reorderQuickLinks(orderedIds: number[]): Promise<void> {
   const now = new Date().toISOString();
+  for (let i = 0; i < orderedIds.length; i++) {
+    const { error } = await supabase
+      .from('quick_links')
+      .update({ sort_order: i, updated_at: now })
+      .eq('id', orderedIds[i]);
+    if (error) err(error, 'Failed to reorder links');
+  }
+}
+
+export const createLink = async (
+  data: Omit<QuickLink, 'id' | 'createdAt' | 'updatedAt' | 'sortOrder'> & { sortOrder?: number },
+): Promise<QuickLink> => {
+  const now = new Date().toISOString();
+  const existing = await getLinks();
+  const maxSo = Math.max(-1, ...existing.map(l => l.sortOrder));
+  const sortOrder = data.sortOrder !== undefined ? data.sortOrder : maxSo + 1;
   const { data: row, error } = await supabase
     .from('quick_links')
     .insert({
@@ -778,6 +817,7 @@ export const createLink = async (data: Omit<QuickLink, 'id' | 'createdAt' | 'upd
       url: data.url,
       category: data.category ?? null,
       notes: data.notes ?? null,
+      sort_order: sortOrder,
       created_at: now,
       updated_at: now,
     })
@@ -790,6 +830,7 @@ export const createLink = async (data: Omit<QuickLink, 'id' | 'createdAt' | 'upd
     url: string;
     category: string | null;
     notes: string | null;
+    sort_order?: number | null;
     created_at: string;
     updated_at: string;
   };
@@ -799,21 +840,24 @@ export const createLink = async (data: Omit<QuickLink, 'id' | 'createdAt' | 'upd
     url: r.url,
     category: r.category ?? undefined,
     notes: r.notes ?? undefined,
+    sortOrder: r.sort_order ?? sortOrder,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
   };
 };
 
 export const updateLink = async (id: number, data: Omit<QuickLink, 'id' | 'createdAt' | 'updatedAt'>): Promise<QuickLink> => {
+  const patch: Record<string, unknown> = {
+    title: data.title,
+    url: data.url,
+    category: data.category ?? null,
+    notes: data.notes ?? null,
+    updated_at: new Date().toISOString(),
+  };
+  if (data.sortOrder !== undefined) patch.sort_order = data.sortOrder;
   const { data: row, error } = await supabase
     .from('quick_links')
-    .update({
-      title: data.title,
-      url: data.url,
-      category: data.category ?? null,
-      notes: data.notes ?? null,
-      updated_at: new Date().toISOString(),
-    })
+    .update(patch)
     .eq('id', id)
     .select()
     .single();
@@ -824,6 +868,7 @@ export const updateLink = async (id: number, data: Omit<QuickLink, 'id' | 'creat
     url: string;
     category: string | null;
     notes: string | null;
+    sort_order?: number | null;
     created_at: string;
     updated_at: string;
   };
@@ -833,6 +878,7 @@ export const updateLink = async (id: number, data: Omit<QuickLink, 'id' | 'creat
     url: r.url,
     category: r.category ?? undefined,
     notes: r.notes ?? undefined,
+    sortOrder: r.sort_order ?? data.sortOrder,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
   };
@@ -854,6 +900,7 @@ function mapResourceRow(r: {
   category: string | null;
   url: string | null;
   notes: string | null;
+  sort_order?: number | null;
   created_at: string;
   updated_at: string;
 }): ResourceItemRow {
@@ -866,21 +913,46 @@ function mapResourceRow(r: {
     category: r.category ?? undefined,
     url: r.url ?? undefined,
     notes: r.notes ?? undefined,
+    sortOrder: r.sort_order ?? 0,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
   };
 }
 
 export async function getResourceRows(): Promise<ResourceItemRow[]> {
-  const { data, error } = await supabase.from('resource_items').select('*').order('title');
+  const { data, error } = await supabase
+    .from('resource_items')
+    .select('*')
+    .order('section', { ascending: true })
+    .order('sort_order', { ascending: true })
+    .order('title');
   if (error) err(error, 'Failed to load resources');
   return (data as Parameters<typeof mapResourceRow>[0][]).map(mapResourceRow);
 }
 
+export async function reorderResourceRows(orderedIds: number[]): Promise<void> {
+  const now = new Date().toISOString();
+  for (let i = 0; i < orderedIds.length; i++) {
+    const { error } = await supabase
+      .from('resource_items')
+      .update({ sort_order: i, updated_at: now })
+      .eq('id', orderedIds[i]);
+    if (error) err(error, 'Failed to reorder resources');
+  }
+}
+
 export async function createResourceRow(
-  d: Omit<ResourceItemRow, 'id' | 'createdAt' | 'updatedAt'>,
+  d: Omit<ResourceItemRow, 'id' | 'createdAt' | 'updatedAt' | 'sortOrder'> & { sortOrder?: number },
 ): Promise<ResourceItemRow> {
   const now = new Date().toISOString();
+  const all = await getResourceRows();
+  const peers = all.filter(
+    r =>
+      r.section === d.section &&
+      (d.section !== 'ClassLink' || r.classCategory === d.classCategory),
+  );
+  const maxSo = Math.max(-1, ...peers.map(r => r.sortOrder));
+  const sortOrder = d.sortOrder !== undefined ? d.sortOrder : maxSo + 1;
   const { data, error } = await supabase
     .from('resource_items')
     .insert({
@@ -892,6 +964,7 @@ export async function createResourceRow(
       url: d.url ?? null,
       notes: d.notes ?? null,
       type: 'Other',
+      sort_order: sortOrder,
       created_at: now,
       updated_at: now,
     })
@@ -905,18 +978,20 @@ export async function updateResourceRow(
   id: number,
   d: Omit<ResourceItemRow, 'id' | 'createdAt' | 'updatedAt'>,
 ): Promise<ResourceItemRow> {
+  const patch: Record<string, unknown> = {
+    title: d.title,
+    description: d.description ?? null,
+    section: d.section,
+    class_category: d.classCategory ?? null,
+    category: d.category ?? null,
+    url: d.url ?? null,
+    notes: d.notes ?? null,
+    updated_at: new Date().toISOString(),
+  };
+  if (d.sortOrder !== undefined) patch.sort_order = d.sortOrder;
   const { data, error } = await supabase
     .from('resource_items')
-    .update({
-      title: d.title,
-      description: d.description ?? null,
-      section: d.section,
-      class_category: d.classCategory ?? null,
-      category: d.category ?? null,
-      url: d.url ?? null,
-      notes: d.notes ?? null,
-      updated_at: new Date().toISOString(),
-    })
+    .update(patch)
     .eq('id', id)
     .select()
     .single();

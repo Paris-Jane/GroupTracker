@@ -182,8 +182,9 @@ export default function HomePage() {
   }, [tasks]);
 
   const currentSprint = useMemo(
-    () => inferCurrentSprintNumber(sprintGoals, tasks, settings?.sprintCount ?? 6),
-    [sprintGoals, tasks, settings?.sprintCount],
+    () =>
+      inferCurrentSprintNumber(sprintGoals, tasks, settings?.sprintCount ?? 6, settings?.sprintDeadlines),
+    [sprintGoals, tasks, settings?.sprintCount, settings?.sprintDeadlines],
   );
 
   const myTasks = useMemo(() => {
@@ -262,14 +263,6 @@ export default function HomePage() {
 
   return (
     <div className="home-page">
-      <div className="home-header">
-        <div className="home-header-left">
-          <h1 className="home-title">Dashboard</h1>
-          <p className="home-subtitle">
-            {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
-          </p>
-        </div>
-      </div>
 
       <div className="home-stats-row">
         <StatCard
