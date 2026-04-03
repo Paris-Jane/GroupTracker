@@ -566,6 +566,8 @@ async function deleteAllRows(table: string): Promise<void> {
 /** Destructive bulk reset (admin). Order handles common FKs. */
 export async function adminBulkReset(opts: AdminBulkResetOptions): Promise<void> {
   if (opts.pokerAndPickSessions) {
+    await deleteAllRows('sprint_pick_ratings');
+    await deleteAllRows('sprint_poker_votes');
     await deleteAllRows('pick_sessions');
     await deleteAllRows('poker_sessions');
     await supabase
@@ -1479,6 +1481,122 @@ export async function fetchPokerSessionAllVotes(sessionId: number): Promise<{
       value: r.value,
     })),
   };
+}
+
+// ── Sprint-scoped pick & poker (per member; no shared session) ─────────────
+
+const SPRINT_POKER_VALUES = [0, 1, 2, 3, 5, 8, 13] as const;
+
+export async function fetchSprintPickRatingsForMember(sprintNumber: number, memberId: number): Promise<Map<number, number>> {
+  const { data, error } = await supabase
+    .from('sprint_pick_ratings')
+    .select('task_item_id,rating')
+    .eq('sprint_number', sprintNumber)
+    .eq('group_member_id', memberId);
+  if (error) err(error, 'Failed to load pick ratings');
+  const m = new Map<number, number>();
+  for (const r of data ?? []) {
+    const row = r as { task_item_id: number; rating: number };
+    m.set(Number(row.task_item_id), Number(row.rating));
+  }
+  return m;
+}
+
+export async function saveSprintPickRatings(
+  sprintNumber: number,
+  memberId: number,
+  entries: { taskItemId: number; rating: number | null }[],
+): Promise<void> {
+  for (const { taskItemId, rating } of entries) {
+    await supabase
+      .from('sprint_pick_ratings')
+      .delete()
+      .eq('sprint_number', sprintNumber)
+      .eq('task_item_id', taskItemId)
+      .eq('group_member_id', memberId);
+    if (rating != null && rating >= 1 && rating <= 10) {
+      const { error } = await supabase.from('sprint_pick_ratings').upsert(
+        {
+          sprint_number: sprintNumber,
+          task_item_id: taskItemId,
+          group_member_id: memberId,
+          rating,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'sprint_number,task_item_id,group_member_id' },
+      );
+      if (error) err(error, 'Failed to save pick rating');
+    }
+  }
+}
+
+export async function fetchSprintPickRatingsAggregated(sprintNumber: number): Promise<PickRatingRow[]> {
+  const { data, error } = await supabase
+    .from('sprint_pick_ratings')
+    .select('task_item_id,group_member_id,rating')
+    .eq('sprint_number', sprintNumber);
+  if (error) err(error, 'Failed to load pick results');
+  return (data ?? []).map((r: { task_item_id: number; group_member_id: number; rating: number | null }) => ({
+    taskItemId: Number(r.task_item_id),
+    memberId: Number(r.group_member_id),
+    rating: r.rating,
+  }));
+}
+
+export async function fetchSprintPokerVotesForMember(sprintNumber: number, memberId: number): Promise<Map<number, number>> {
+  const { data, error } = await supabase
+    .from('sprint_poker_votes')
+    .select('task_item_id,value')
+    .eq('sprint_number', sprintNumber)
+    .eq('group_member_id', memberId);
+  if (error) err(error, 'Failed to load poker votes');
+  const m = new Map<number, number>();
+  for (const r of data ?? []) {
+    const row = r as { task_item_id: number; value: number };
+    m.set(Number(row.task_item_id), Number(row.value));
+  }
+  return m;
+}
+
+export async function saveSprintPokerVotes(
+  sprintNumber: number,
+  memberId: number,
+  entries: { taskItemId: number; value: number | null }[],
+): Promise<void> {
+  for (const { taskItemId, value } of entries) {
+    await supabase
+      .from('sprint_poker_votes')
+      .delete()
+      .eq('sprint_number', sprintNumber)
+      .eq('task_item_id', taskItemId)
+      .eq('group_member_id', memberId);
+    if (value != null && (SPRINT_POKER_VALUES as readonly number[]).includes(value)) {
+      const { error } = await supabase.from('sprint_poker_votes').upsert(
+        {
+          sprint_number: sprintNumber,
+          task_item_id: taskItemId,
+          group_member_id: memberId,
+          value,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'sprint_number,task_item_id,group_member_id' },
+      );
+      if (error) err(error, 'Failed to save poker vote');
+    }
+  }
+}
+
+export async function fetchSprintPokerVotesAggregated(sprintNumber: number): Promise<PokerVoteRow[]> {
+  const { data, error } = await supabase
+    .from('sprint_poker_votes')
+    .select('task_item_id,group_member_id,value')
+    .eq('sprint_number', sprintNumber);
+  if (error) err(error, 'Failed to load poker results');
+  return (data ?? []).map((r: { task_item_id: number; group_member_id: number; value: number | null }) => ({
+    taskItemId: Number(r.task_item_id),
+    memberId: Number(r.group_member_id),
+    value: r.value,
+  }));
 }
 
 // Legacy comfort ratings (optional — table still exists)

@@ -1,19 +1,16 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { TaskItem, GroupMember } from '../../types';
 import {
-  startPickSession,
-  getActivePickSession,
-  pickMarkReady,
-  pickStartRating,
-  pickSubmitRating,
-  pickNextTask,
-  fetchPickSessionAllRatings,
+  fetchSprintPickRatingsForMember,
+  saveSprintPickRatings,
+  fetchSprintPickRatingsAggregated,
   assignTask,
-  type PickSessionState,
   type PickRatingRow,
 } from '../../api/client';
 
-type Flow = 'menu' | 'pick' | 'results';
+type Flow = 'menu' | 'rank' | 'results';
+
+const RANK_OPTIONS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10] as const;
 
 function aggregatePickRows(
   queue: number[],
@@ -49,90 +46,103 @@ function aggregatePickRows(
 export default function PickTasksModal({
   open,
   onClose,
-  tasks,
+  sprintNumber,
+  sprintTasks,
   members,
   currentMemberId,
   onTasksChanged,
 }: {
   open: boolean;
   onClose: () => void;
-  tasks: TaskItem[];
+  sprintNumber: number;
+  sprintTasks: TaskItem[];
   members: GroupMember[];
   currentMemberId: number | null;
   onTasksChanged?: () => void;
 }) {
-  const memberCount = Math.max(1, members.length);
   const [flow, setFlow] = useState<Flow>('menu');
-  const [state, setState] = useState<PickSessionState | null>(null);
-  const [configAll, setConfigAll] = useState(true);
-  const [configSprint, setConfigSprint] = useState('1');
-  const [starting, setStarting] = useState(false);
+  const [draft, setDraft] = useState<Record<number, number | ''>>({});
   const [busy, setBusy] = useState(false);
+  const [saveError, setSaveError] = useState('');
   const [resultsRows, setResultsRows] = useState<ReturnType<typeof aggregatePickRows>>([]);
-  const [resultsSessionId, setResultsSessionId] = useState<number | null>(null);
   const [resultsLoading, setResultsLoading] = useState(false);
 
-  const refresh = useCallback(async () => {
-    const st = await getActivePickSession(memberCount);
-    setState(st);
-  }, [memberCount]);
+  const sortedTasks = useMemo(
+    () => [...sprintTasks].sort((a, b) => a.name.localeCompare(b.name)),
+    [sprintTasks],
+  );
+  const taskOrder = useMemo(() => sortedTasks.map(t => t.id), [sortedTasks]);
+  const taskMap = useMemo(() => new Map(sprintTasks.map(t => [t.id, t])), [sprintTasks]);
 
   useEffect(() => {
     if (!open) {
-      setState(null);
       setFlow('menu');
+      setDraft({});
+      setSaveError('');
       setResultsRows([]);
-      setResultsSessionId(null);
       return;
     }
-    void refresh();
-    const t = setInterval(() => void refresh(), 2000);
-    return () => clearInterval(t);
-  }, [open, refresh]);
+  }, [open]);
+
+  useEffect(() => {
+    if (!open || flow !== 'rank' || !currentMemberId) return;
+    let cancelled = false;
+    setBusy(true);
+    fetchSprintPickRatingsForMember(sprintNumber, currentMemberId)
+      .then(m => {
+        if (cancelled) return;
+        const next: Record<number, number | ''> = {};
+        for (const t of sortedTasks) {
+          const v = m.get(t.id);
+          next[t.id] = v ?? '';
+        }
+        setDraft(next);
+      })
+      .finally(() => {
+        if (!cancelled) setBusy(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, flow, sprintNumber, currentMemberId, sortedTasks]);
 
   const loadResults = useCallback(async () => {
     setResultsLoading(true);
     try {
-      const st = await getActivePickSession(memberCount);
-      if (!st) {
-        setResultsSessionId(null);
-        setResultsRows([]);
-        return;
-      }
-      const { taskQueue, ratings } = await fetchPickSessionAllRatings(st.id);
-      setResultsSessionId(st.id);
-      setResultsRows(aggregatePickRows(taskQueue, ratings, members));
+      const ratings = await fetchSprintPickRatingsAggregated(sprintNumber);
+      setResultsRows(aggregatePickRows(taskOrder, ratings, members));
     } finally {
       setResultsLoading(false);
     }
-  }, [memberCount, members]);
+  }, [sprintNumber, taskOrder, members]);
 
   useEffect(() => {
     if (open && flow === 'results') void loadResults();
   }, [open, flow, loadResults]);
 
-  const queuePreview = useMemo(
-    () => tasks.filter(t => configAll || t.sprintNumber === Number(configSprint)),
-    [tasks, configAll, configSprint],
-  );
+  useEffect(() => {
+    if (!open || flow !== 'results') return;
+    const t = setInterval(() => void loadResults(), 4000);
+    return () => clearInterval(t);
+  }, [open, flow, loadResults]);
 
-  const startNew = async () => {
-    if (queuePreview.length === 0) return;
-    setStarting(true);
-    try {
-      const sprint = configAll ? null : Number(configSprint) || null;
-      await startPickSession(configAll, sprint, tasks);
-      await refresh();
-    } finally {
-      setStarting(false);
-    }
-  };
-
-  const run = async (fn: () => Promise<PickSessionState | null>) => {
+  const saveRankings = async () => {
+    if (!currentMemberId) return;
+    setSaveError('');
     setBusy(true);
     try {
-      const next = await fn();
-      setState(next);
+      const entries = sortedTasks.map(t => {
+        const v = draft[t.id];
+        const rating = v === '' || v === undefined ? null : Number(v);
+        return {
+          taskItemId: t.id,
+          rating: rating != null && !Number.isNaN(rating) ? rating : null,
+        };
+      });
+      await saveSprintPickRatings(sprintNumber, currentMemberId, entries);
+      onTasksChanged?.();
+    } catch {
+      setSaveError('Could not save. Check your connection and try again.');
     } finally {
       setBusy(false);
     }
@@ -140,33 +150,75 @@ export default function PickTasksModal({
 
   if (!open) return null;
 
-  const taskMap = new Map(tasks.map(t => [t.id, t]));
-  const currentTask = state?.currentTaskId ? taskMap.get(state.currentTaskId) : null;
-  const myRating =
-    state && currentMemberId ? state.ratings.find(r => r.memberId === currentMemberId) : undefined;
-  const avg =
-    state && state.phase === 'revealed'
-      ? (() => {
-          const vals = state.ratings.map(r => r.rating).filter((x): x is number => x != null);
-          if (!vals.length) return null;
-          return Math.round((vals.reduce((a, b) => a + b, 0) / vals.length) * 10) / 10;
-        })()
-      : null;
-
   const menuView = (
     <div className="pick-poker-menu">
       <p className="text-sm text-muted mb-3">
-        <strong>Pick</strong> — rank how much you want each task (1–10). <strong>View results</strong> — see everyone’s
-        ratings and assign tasks; highest rank is highlighted.
+        Sprint <strong>{sprintNumber}</strong> only — {sortedTasks.length} task{sortedTasks.length !== 1 ? 's' : ''} on
+        the board. Anyone can rank anytime; your answers are saved for you only.
       </p>
       <div className="pick-poker-menu-actions">
-        <button type="button" className="btn btn-primary" onClick={() => setFlow('pick')}>
-          Rank tasks (Pick)
+        <button type="button" className="btn btn-primary" onClick={() => setFlow('rank')}>
+          Rank tasks
         </button>
         <button type="button" className="btn btn-secondary" onClick={() => setFlow('results')}>
           View results
         </button>
       </div>
+    </div>
+  );
+
+  const rankView = (
+    <div>
+      <div className="flex gap-2 flex-wrap mb-3">
+        <button type="button" className="btn btn-ghost btn-sm" onClick={() => setFlow('menu')}>
+          ← Back
+        </button>
+      </div>
+      <p className="text-sm text-muted mb-3">
+        How comfortable are you taking each task? (1 = low, 10 = high). Save when done — reopen anytime to edit.
+      </p>
+      {!currentMemberId ? (
+        <p className="text-sm text-muted">Sign in to rank tasks.</p>
+      ) : sortedTasks.length === 0 ? (
+        <p className="text-sm text-muted">No tasks in this sprint yet.</p>
+      ) : busy && Object.keys(draft).length === 0 ? (
+        <p className="text-sm text-muted">Loading your rankings…</p>
+      ) : (
+        <>
+          <ul className="sprint-game-rank-list">
+            {sortedTasks.map(t => (
+              <li key={t.id} className="sprint-game-rank-row card">
+                <span className="sprint-game-rank-task-name">{t.name}</span>
+                <label className="sprint-game-rank-label text-xs text-muted">
+                  Comfort (1–10)
+                  <select
+                    className="select-compact mt-1"
+                    value={draft[t.id] === '' || draft[t.id] === undefined ? '' : String(draft[t.id])}
+                    onChange={e => {
+                      const v = e.target.value;
+                      setDraft(d => ({ ...d, [t.id]: v === '' ? '' : Number(v) }));
+                    }}
+                    disabled={busy}
+                  >
+                    <option value="">—</option>
+                    {RANK_OPTIONS.map(n => (
+                      <option key={n} value={n}>
+                        {n}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </li>
+            ))}
+          </ul>
+          {saveError ? <div className="form-error mt-2">{saveError}</div> : null}
+          <div className="mt-3">
+            <button type="button" className="btn btn-primary" disabled={busy} onClick={() => void saveRankings()}>
+              {busy ? 'Saving…' : 'Save rankings'}
+            </button>
+          </div>
+        </>
+      )}
     </div>
   );
 
@@ -182,10 +234,8 @@ export default function PickTasksModal({
       </div>
       {resultsLoading ? (
         <p className="text-sm text-muted">Loading…</p>
-      ) : !resultsSessionId ? (
-        <p className="text-sm text-muted">No active pick session. Start one from Rank tasks (Pick), or wait until a session exists.</p>
-      ) : resultsRows.length === 0 ? (
-        <p className="text-sm text-muted">No tasks in this session yet.</p>
+      ) : taskOrder.length === 0 ? (
+        <p className="text-sm text-muted">No tasks in this sprint.</p>
       ) : (
         <ul className="game-results-list">
           {resultsRows.map(row => {
@@ -241,172 +291,17 @@ export default function PickTasksModal({
     </div>
   );
 
-  const pickSessionView = state?.phase === 'complete' ? (
-    <div>
-      <p className="text-sm mb-3">This pick session is finished. You can review results or start a new session.</p>
-      <div className="flex gap-2 flex-wrap mb-3">
-        <button type="button" className="btn btn-primary btn-sm" onClick={() => setFlow('results')}>
-          View results
-        </button>
-        <button type="button" className="btn btn-ghost btn-sm" onClick={() => setFlow('menu')}>
-          ← Menu
-        </button>
-      </div>
-    </div>
-  ) : !state ? (
-    <>
-      <div className="mb-3">
-        <button type="button" className="btn btn-ghost btn-sm" onClick={() => setFlow('menu')}>
-          ← Back
-        </button>
-      </div>
-      <p className="text-sm text-muted mb-3">Rate how much you want to work on each task (1–10). Results show when everyone has rated.</p>
-      <div className="form-row">
-        <label className="flex gap-2 items-center font-normal cursor-pointer">
-          <input type="radio" checked={configAll} onChange={() => setConfigAll(true)} style={{ width: 'auto' }} />
-          All tasks
-        </label>
-        <label className="flex gap-2 items-center font-normal cursor-pointer">
-          <input type="radio" checked={!configAll} onChange={() => setConfigAll(false)} style={{ width: 'auto' }} />
-          One sprint
-        </label>
-      </div>
-      {!configAll && (
-        <div className="form-row">
-          <label>Sprint number</label>
-          <input type="number" min={1} value={configSprint} onChange={e => setConfigSprint(e.target.value)} />
-        </div>
-      )}
-      <p className="text-xs text-muted mb-3">{queuePreview.length} task(s) in queue.</p>
-      <button
-        type="button"
-        className="btn btn-primary"
-        disabled={queuePreview.length === 0 || starting}
-        onClick={() => void startNew()}
-      >
-        {starting ? 'Starting…' : 'Start session'}
-      </button>
-    </>
-  ) : (
-    <>
-      <div className="mb-3">
-        <button type="button" className="btn btn-ghost btn-sm" onClick={() => setFlow('menu')}>
-          ← Menu
-        </button>
-      </div>
-      <p className="text-sm text-muted mb-2">
-        Task {state.currentIndex + 1} of {state.taskQueue.length}
-        {!state.filterAllTasks && state.sprintNumber != null && ` · Sprint ${state.sprintNumber}`}
-      </p>
-      {currentTask ? (
-        <div className="card mb-3">
-          <div className="font-medium">{currentTask.name}</div>
-          {currentTask.notes && <p className="text-sm text-muted mt-1">{currentTask.notes}</p>}
-        </div>
-      ) : (
-        <p className="empty-hint">No current task.</p>
-      )}
-
-      {state.phase === 'ready' && (
-        <div>
-          <p className="text-sm mb-2">
-            Mark when you&apos;re ready. Anyone can press <strong>Start rating</strong> when the team is set (works with any number of players).
-          </p>
-          <p className="text-xs text-muted mb-2">Ready: {state.readyMemberIds.length}</p>
-          <div className="flex gap-2 flex-wrap">
-            <button
-              type="button"
-              className="btn btn-primary btn-sm"
-              disabled={!currentMemberId || busy}
-              onClick={() =>
-                currentMemberId && void run(() => pickMarkReady(state.id, currentMemberId, memberCount))
-              }
-            >
-              I&apos;m ready
-            </button>
-            <button
-              type="button"
-              className="btn btn-secondary btn-sm"
-              disabled={busy}
-              onClick={() => void run(() => pickStartRating(state.id, memberCount))}
-            >
-              Start rating
-            </button>
-          </div>
-        </div>
-      )}
-
-      {state.phase === 'rating' && currentTask && (
-        <div>
-          {!currentMemberId ? (
-            <p className="text-sm text-muted">Sign in to rate.</p>
-          ) : (
-            <>
-              <p className="text-sm mb-2">How much do you want this task? (1 = low, 10 = high)</p>
-              <div className="poker-deck flex-wrap">
-                {Array.from({ length: 10 }, (_, i) => i + 1).map(n => (
-                  <button
-                    key={n}
-                    type="button"
-                    className={`btn btn-secondary btn-sm ${myRating?.rating === n ? 'btn-primary' : ''}`}
-                    disabled={busy}
-                    onClick={() =>
-                      void run(() =>
-                        pickSubmitRating(state.id, currentTask.id, currentMemberId, n, memberCount),
-                      )
-                    }
-                  >
-                    {n}
-                  </button>
-                ))}
-              </div>
-            </>
-          )}
-        </div>
-      )}
-
-      {state.phase === 'revealed' && currentTask && (
-        <div>
-          <p className="text-sm mb-2">Ratings</p>
-          <ul className="text-sm mb-3">
-            {state.ratings.map(r => {
-              const name = members.find(m => m.id === r.memberId)?.name ?? `Member ${r.memberId}`;
-              return (
-                <li key={r.memberId}>
-                  {name}: <strong>{r.rating ?? '—'}</strong>
-                </li>
-              );
-            })}
-          </ul>
-          {avg != null && (
-            <p className="text-sm mb-3">
-              Average: <strong>{avg}</strong>
-            </p>
-          )}
-          <button
-            type="button"
-            className="btn btn-primary btn-sm"
-            disabled={busy}
-            onClick={() => void run(() => pickNextTask(state.id, memberCount))}
-          >
-            Next task
-          </button>
-        </div>
-      )}
-    </>
-  );
-
   return (
     <div className="modal-overlay">
       <div className="modal modal-lg">
         <div className="modal-header">
-          <span className="modal-title">Pick tasks</span>
+          <span className="modal-title">Pick tasks · Sprint {sprintNumber}</span>
           <button type="button" className="btn btn-ghost btn-sm" onClick={onClose}>
             Close
           </button>
         </div>
         <div className="modal-body">
-          {flow === 'menu' ? menuView : flow === 'results' ? resultsView : pickSessionView}
+          {flow === 'menu' ? menuView : flow === 'rank' ? rankView : resultsView}
         </div>
       </div>
     </div>

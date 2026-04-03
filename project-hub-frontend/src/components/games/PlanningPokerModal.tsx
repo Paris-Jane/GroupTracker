@@ -1,23 +1,18 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { TaskItem, GroupMember } from '../../types';
 import {
-  startPokerSession,
-  getActivePokerSession,
-  pokerMarkReady,
-  pokerStartVoting,
-  pokerSubmitVote,
-  pokerNextTask,
+  fetchSprintPokerVotesForMember,
+  saveSprintPokerVotes,
+  fetchSprintPokerVotesAggregated,
   pokerApplyEvaluation,
   pokerModeValue,
-  fetchPokerSessionAllVotes,
   assignTask,
-  type PokerSessionState,
   type PokerVoteRow,
 } from '../../api/client';
 
 const DECK = [0, 1, 2, 3, 5, 8, 13] as const;
 
-type Flow = 'menu' | 'vote' | 'results';
+type Flow = 'menu' | 'play' | 'results';
 
 function aggregatePokerRows(
   queue: number[],
@@ -52,93 +47,102 @@ function aggregatePokerRows(
 export default function PlanningPokerModal({
   open,
   onClose,
-  tasks,
+  sprintNumber,
+  sprintTasks,
   members,
   currentMemberId,
   onTasksChanged,
 }: {
   open: boolean;
   onClose: () => void;
-  tasks: TaskItem[];
+  sprintNumber: number;
+  sprintTasks: TaskItem[];
   members: GroupMember[];
   currentMemberId: number | null;
   onTasksChanged: () => void;
 }) {
-  const memberCount = Math.max(1, members.length);
   const [flow, setFlow] = useState<Flow>('menu');
-  const [state, setState] = useState<PokerSessionState | null>(null);
-  const [configAll, setConfigAll] = useState(true);
-  const [configSprint, setConfigSprint] = useState('1');
-  const [starting, setStarting] = useState(false);
+  const [draft, setDraft] = useState<Record<number, number | ''>>({});
   const [busy, setBusy] = useState(false);
+  const [saveError, setSaveError] = useState('');
   const [resultsRows, setResultsRows] = useState<ReturnType<typeof aggregatePokerRows>>([]);
-  const [resultsSessionId, setResultsSessionId] = useState<number | null>(null);
   const [resultsLoading, setResultsLoading] = useState(false);
 
-  const refresh = useCallback(async () => {
-    const st = await getActivePokerSession(memberCount);
-    setState(st);
-  }, [memberCount]);
+  const sortedTasks = useMemo(
+    () => [...sprintTasks].sort((a, b) => a.name.localeCompare(b.name)),
+    [sprintTasks],
+  );
+  const taskOrder = useMemo(() => sortedTasks.map(t => t.id), [sortedTasks]);
+  const taskMap = useMemo(() => new Map(sprintTasks.map(t => [t.id, t])), [sprintTasks]);
 
   useEffect(() => {
     if (!open) {
-      setState(null);
       setFlow('menu');
+      setDraft({});
+      setSaveError('');
       setResultsRows([]);
-      setResultsSessionId(null);
-      return;
     }
-    void refresh();
-    const t = setInterval(() => void refresh(), 2000);
-    return () => clearInterval(t);
-  }, [open, refresh]);
+  }, [open]);
+
+  useEffect(() => {
+    if (!open || flow !== 'play' || !currentMemberId) return;
+    let cancelled = false;
+    setBusy(true);
+    fetchSprintPokerVotesForMember(sprintNumber, currentMemberId)
+      .then(m => {
+        if (cancelled) return;
+        const next: Record<number, number | ''> = {};
+        for (const t of sortedTasks) {
+          const v = m.get(t.id);
+          next[t.id] = v ?? '';
+        }
+        setDraft(next);
+      })
+      .finally(() => {
+        if (!cancelled) setBusy(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, flow, sprintNumber, currentMemberId, sortedTasks]);
 
   const loadResults = useCallback(async () => {
     setResultsLoading(true);
     try {
-      const st = await getActivePokerSession(memberCount);
-      if (!st) {
-        setResultsSessionId(null);
-        setResultsRows([]);
-        return;
-      }
-      const { taskQueue, votes } = await fetchPokerSessionAllVotes(st.id);
-      setResultsSessionId(st.id);
-      setResultsRows(aggregatePokerRows(taskQueue, votes, members));
+      const votes = await fetchSprintPokerVotesAggregated(sprintNumber);
+      setResultsRows(aggregatePokerRows(taskOrder, votes, members));
     } finally {
       setResultsLoading(false);
     }
-  }, [memberCount, members]);
+  }, [sprintNumber, taskOrder, members]);
 
   useEffect(() => {
     if (open && flow === 'results') void loadResults();
   }, [open, flow, loadResults]);
 
-  const queuePreview = useMemo(
-    () => tasks.filter(t => configAll || t.sprintNumber === Number(configSprint)),
-    [tasks, configAll, configSprint],
-  );
+  useEffect(() => {
+    if (!open || flow !== 'results') return;
+    const t = setInterval(() => void loadResults(), 4000);
+    return () => clearInterval(t);
+  }, [open, flow, loadResults]);
 
-  const startNew = async () => {
-    if (queuePreview.length === 0) return;
-    setStarting(true);
-    try {
-      const sprint = configAll ? null : Number(configSprint) || null;
-      await startPokerSession(configAll, sprint, tasks);
-      await refresh();
-    } finally {
-      setStarting(false);
-    }
-  };
-
-  const run = async (fn: () => Promise<PokerSessionState | null>) => {
+  const saveVotes = async () => {
+    if (!currentMemberId) return;
+    setSaveError('');
     setBusy(true);
     try {
-      const next = await fn();
-      setState(next);
-      if (next?.phase === 'complete') {
-        onTasksChanged();
-      }
+      const entries = sortedTasks.map(t => {
+        const v = draft[t.id];
+        const value = v === '' || v === undefined ? null : Number(v);
+        return {
+          taskItemId: t.id,
+          value: value != null && !Number.isNaN(value) ? value : null,
+        };
+      });
+      await saveSprintPokerVotes(sprintNumber, currentMemberId, entries);
+      onTasksChanged();
+    } catch {
+      setSaveError('Could not save. Check your connection and try again.');
     } finally {
       setBusy(false);
     }
@@ -146,24 +150,78 @@ export default function PlanningPokerModal({
 
   if (!open) return null;
 
-  const taskMap = new Map(tasks.map(t => [t.id, t]));
-  const currentTask = state?.currentTaskId ? taskMap.get(state.currentTaskId) : null;
-  const myVote = state && currentMemberId ? state.votes.find(v => v.memberId === currentMemberId) : undefined;
-  const mode = state ? pokerModeValue(state.votes) : null;
-
   const menuView = (
     <div className="pick-poker-menu">
       <p className="text-sm text-muted mb-3">
-        <strong>Vote</strong> — planning poker on each task. <strong>View results</strong> — see all votes, the consensus (mode), and assign or apply evaluation.
+        Sprint <strong>{sprintNumber}</strong> only — {sortedTasks.length} task{sortedTasks.length !== 1 ? 's' : ''}.
+        Estimate difficulty using the planning-poker scale. Anyone can play anytime; your estimates are saved for you
+        only.
       </p>
       <div className="pick-poker-menu-actions">
-        <button type="button" className="btn btn-primary" onClick={() => setFlow('vote')}>
-          Vote (session)
+        <button type="button" className="btn btn-primary" onClick={() => setFlow('play')}>
+          Play poker
         </button>
         <button type="button" className="btn btn-secondary" onClick={() => setFlow('results')}>
           View results
         </button>
       </div>
+    </div>
+  );
+
+  const playView = (
+    <div>
+      <div className="flex gap-2 flex-wrap mb-3">
+        <button type="button" className="btn btn-ghost btn-sm" onClick={() => setFlow('menu')}>
+          ← Back
+        </button>
+      </div>
+      <p className="text-sm text-muted mb-3">
+        How difficult is each task? Choose 0, 1, 2, 3, 5, 8, or 13. Save when done — reopen anytime to edit.
+      </p>
+      {!currentMemberId ? (
+        <p className="text-sm text-muted">Sign in to play poker.</p>
+      ) : sortedTasks.length === 0 ? (
+        <p className="text-sm text-muted">No tasks in this sprint yet.</p>
+      ) : busy && Object.keys(draft).length === 0 ? (
+        <p className="text-sm text-muted">Loading your estimates…</p>
+      ) : (
+        <>
+          <ul className="sprint-game-rank-list">
+            {sortedTasks.map(t => (
+              <li key={t.id} className="sprint-game-rank-row card">
+                <span className="sprint-game-rank-task-name">{t.name}</span>
+                <div className="sprint-poker-deck-row">
+                  {DECK.map(v => (
+                    <button
+                      key={v}
+                      type="button"
+                      className={`btn btn-secondary btn-sm sprint-poker-card${draft[t.id] === v ? ' btn-primary' : ''}`}
+                      onClick={() => setDraft(d => ({ ...d, [t.id]: v }))}
+                      disabled={busy}
+                    >
+                      {v}
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-sm"
+                    onClick={() => setDraft(d => ({ ...d, [t.id]: '' }))}
+                    disabled={busy}
+                  >
+                    Clear
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+          {saveError ? <div className="form-error mt-2">{saveError}</div> : null}
+          <div className="mt-3">
+            <button type="button" className="btn btn-primary" disabled={busy} onClick={() => void saveVotes()}>
+              {busy ? 'Saving…' : 'Save estimates'}
+            </button>
+          </div>
+        </>
+      )}
     </div>
   );
 
@@ -179,10 +237,8 @@ export default function PlanningPokerModal({
       </div>
       {resultsLoading ? (
         <p className="text-sm text-muted">Loading…</p>
-      ) : !resultsSessionId ? (
-        <p className="text-sm text-muted">No active planning poker session. Start one from Vote (session).</p>
-      ) : resultsRows.length === 0 ? (
-        <p className="text-sm text-muted">No tasks in this session yet.</p>
+      ) : taskOrder.length === 0 ? (
+        <p className="text-sm text-muted">No tasks in this sprint.</p>
       ) : (
         <ul className="game-results-list">
           {resultsRows.map(row => {
@@ -260,192 +316,17 @@ export default function PlanningPokerModal({
     </div>
   );
 
-  const voteSessionView = state?.phase === 'complete' ? (
-    <div>
-      <p className="text-sm mb-3">This planning poker session is finished. Review results or start a new session.</p>
-      <div className="flex gap-2 flex-wrap mb-3">
-        <button type="button" className="btn btn-primary btn-sm" onClick={() => setFlow('results')}>
-          View results
-        </button>
-        <button type="button" className="btn btn-ghost btn-sm" onClick={() => setFlow('menu')}>
-          ← Menu
-        </button>
-      </div>
-    </div>
-  ) : !state ? (
-    <>
-      <div className="mb-3">
-        <button type="button" className="btn btn-ghost btn-sm" onClick={() => setFlow('menu')}>
-          ← Back
-        </button>
-      </div>
-      <p className="text-sm text-muted mb-3">Start a shared session. Everyone with this app open sees the same task queue.</p>
-      <div className="form-row">
-        <label className="flex gap-2 items-center font-normal cursor-pointer">
-          <input type="radio" checked={configAll} onChange={() => setConfigAll(true)} style={{ width: 'auto' }} />
-          All tasks
-        </label>
-        <label className="flex gap-2 items-center font-normal cursor-pointer">
-          <input type="radio" checked={!configAll} onChange={() => setConfigAll(false)} style={{ width: 'auto' }} />
-          One sprint
-        </label>
-      </div>
-      {!configAll && (
-        <div className="form-row">
-          <label>Sprint number</label>
-          <input type="number" min={1} value={configSprint} onChange={e => setConfigSprint(e.target.value)} />
-        </div>
-      )}
-      <p className="text-xs text-muted mb-3">{queuePreview.length} task(s) in queue.</p>
-      <button
-        type="button"
-        className="btn btn-primary"
-        disabled={queuePreview.length === 0 || starting}
-        onClick={() => void startNew()}
-      >
-        {starting ? 'Starting…' : 'Start session'}
-      </button>
-    </>
-  ) : (
-    <>
-      <div className="mb-3">
-        <button type="button" className="btn btn-ghost btn-sm" onClick={() => setFlow('menu')}>
-          ← Menu
-        </button>
-      </div>
-      <p className="text-sm text-muted mb-2">
-        Task {state.currentIndex + 1} of {state.taskQueue.length}
-        {!state.filterAllTasks && state.sprintNumber != null && ` · Sprint ${state.sprintNumber}`}
-      </p>
-      {currentTask ? (
-        <div className="card mb-3">
-          <div className="font-medium">{currentTask.name}</div>
-          {currentTask.notes && <p className="text-sm text-muted mt-1">{currentTask.notes}</p>}
-        </div>
-      ) : (
-        <p className="empty-hint">No current task.</p>
-      )}
-
-      {state.phase === 'ready' && (
-        <div>
-          <p className="text-sm mb-2">
-            Mark when you&apos;re ready. Anyone can press <strong>Start voting</strong> when the team is set (works with any number of players).
-          </p>
-          <p className="text-xs text-muted mb-2">Ready: {state.readyMemberIds.length}</p>
-          <div className="flex gap-2 flex-wrap">
-            <button
-              type="button"
-              className="btn btn-primary btn-sm"
-              disabled={!currentMemberId || busy}
-              onClick={() =>
-                currentMemberId && void run(() => pokerMarkReady(state.id, currentMemberId, memberCount))
-              }
-            >
-              I&apos;m ready
-            </button>
-            <button
-              type="button"
-              className="btn btn-secondary btn-sm"
-              disabled={busy}
-              onClick={() => void run(() => pokerStartVoting(state.id, memberCount))}
-            >
-              Start voting
-            </button>
-          </div>
-        </div>
-      )}
-
-      {state.phase === 'voting' && currentTask && (
-        <div>
-          {!currentMemberId ? (
-            <p className="text-sm text-muted">Sign in to vote.</p>
-          ) : (
-            <>
-              <p className="text-sm mb-2">Choose a card. Values are hidden until everyone votes.</p>
-              <div className="poker-deck">
-                {DECK.map(v => (
-                  <button
-                    key={v}
-                    type="button"
-                    className={`btn btn-secondary btn-sm ${myVote?.value === v ? 'btn-primary' : ''}`}
-                    disabled={busy}
-                    onClick={() =>
-                      void run(() =>
-                        pokerSubmitVote(state.id, currentTask.id, currentMemberId, v, memberCount),
-                      )
-                    }
-                  >
-                    {v}
-                  </button>
-                ))}
-              </div>
-            </>
-          )}
-        </div>
-      )}
-
-      {state.phase === 'revealed' && currentTask && (
-        <div>
-          <p className="text-sm mb-2">Votes</p>
-          <ul className="text-sm mb-3">
-            {state.votes.map(v => {
-              const name = members.find(m => m.id === v.memberId)?.name ?? `Member ${v.memberId}`;
-              return (
-                <li key={v.memberId}>
-                  {name}: <strong>{v.value ?? '—'}</strong>
-                </li>
-              );
-            })}
-          </ul>
-          {mode != null && (
-            <p className="text-sm mb-3">
-              Mode: <strong>{mode}</strong>
-            </p>
-          )}
-          <div className="flex gap-2 flex-wrap">
-            <button
-              type="button"
-              className="btn btn-primary btn-sm"
-              disabled={busy || mode == null}
-              onClick={async () => {
-                if (mode == null) return;
-                setBusy(true);
-                try {
-                  await pokerApplyEvaluation(currentTask.id, mode, currentMemberId ?? undefined);
-                  onTasksChanged();
-                  await run(() => pokerNextTask(state.id, memberCount));
-                } finally {
-                  setBusy(false);
-                }
-              }}
-            >
-              Apply to task &amp; next
-            </button>
-            <button
-              type="button"
-              className="btn btn-secondary btn-sm"
-              disabled={busy}
-              onClick={() => void run(() => pokerNextTask(state.id, memberCount))}
-            >
-              Skip (next task)
-            </button>
-          </div>
-        </div>
-      )}
-    </>
-  );
-
   return (
     <div className="modal-overlay">
       <div className="modal modal-lg">
         <div className="modal-header">
-          <span className="modal-title">Planning poker</span>
+          <span className="modal-title">Planning poker · Sprint {sprintNumber}</span>
           <button type="button" className="btn btn-ghost btn-sm" onClick={onClose}>
             Close
           </button>
         </div>
         <div className="modal-body">
-          {flow === 'menu' ? menuView : flow === 'results' ? resultsView : voteSessionView}
+          {flow === 'menu' ? menuView : flow === 'play' ? playView : resultsView}
         </div>
       </div>
     </div>

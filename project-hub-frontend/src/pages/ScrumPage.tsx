@@ -744,7 +744,8 @@ export default function ScrumPage({ currentMember, members }: Props) {
       <PickTasksModal
         open={showPick}
         onClose={() => setShowPick(false)}
-        tasks={tasks}
+        sprintNumber={sprintNum}
+        sprintTasks={sprintTasks}
         members={members}
         currentMemberId={currentMember?.id ?? null}
         onTasksChanged={loadTasks}
@@ -752,7 +753,8 @@ export default function ScrumPage({ currentMember, members }: Props) {
       <PlanningPokerModal
         open={showPoker}
         onClose={() => setShowPoker(false)}
-        tasks={tasks}
+        sprintNumber={sprintNum}
+        sprintTasks={sprintTasks}
         members={members}
         currentMemberId={currentMember?.id ?? null}
         onTasksChanged={loadTasks}
