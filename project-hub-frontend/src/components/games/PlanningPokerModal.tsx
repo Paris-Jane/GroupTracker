@@ -89,6 +89,13 @@ export default function PlanningPokerModal({
   const sortedTasksRef = useRef(sortedTasks);
   sortedTasksRef.current = sortedTasks;
 
+  const sprintNumberRef = useRef(sprintNumber);
+  const taskOrderRef = useRef(taskOrder);
+  const membersRef = useRef(members);
+  sprintNumberRef.current = sprintNumber;
+  taskOrderRef.current = taskOrder;
+  membersRef.current = members;
+
   const effectiveDraft = useMemo(() => {
     const out: Record<number, number | ''> = { ...draft };
     for (const t of sortedTasks) {
@@ -139,23 +146,24 @@ export default function PlanningPokerModal({
     };
   }, [open, flow, sprintNumber, memberId]);
 
-  const loadResults = useCallback(async () => {
-    setResultsLoading(true);
+  const loadResults = useCallback(async (opts?: { silent?: boolean }) => {
+    const silent = opts?.silent === true;
+    if (!silent) setResultsLoading(true);
     try {
-      const votes = await fetchSprintPokerVotesAggregated(sprintNumber);
-      setResultsRows(aggregatePokerRows(taskOrder, votes, members));
+      const votes = await fetchSprintPokerVotesAggregated(sprintNumberRef.current);
+      setResultsRows(aggregatePokerRows(taskOrderRef.current, votes, membersRef.current));
     } finally {
-      setResultsLoading(false);
+      if (!silent) setResultsLoading(false);
     }
-  }, [sprintNumber, taskOrder, members]);
+  }, []);
 
   useEffect(() => {
-    if (open && flow === 'results') void loadResults();
+    if (open && flow === 'results') void loadResults({ silent: false });
   }, [open, flow, loadResults]);
 
   useEffect(() => {
     if (!open || flow !== 'results') return;
-    const t = setInterval(() => void loadResults(), 4000);
+    const t = setInterval(() => void loadResults({ silent: true }), 8000);
     return () => clearInterval(t);
   }, [open, flow, loadResults]);
 
@@ -174,6 +182,7 @@ export default function PlanningPokerModal({
       });
       await saveSprintPokerVotes(sprintNumber, memberId, entries);
       onTasksChanged();
+      setFlow('results');
     } catch {
       setSaveError('Could not save. Check your connection and try again.');
     } finally {
@@ -275,14 +284,19 @@ export default function PlanningPokerModal({
         <button type="button" className="btn btn-ghost btn-sm" onClick={() => setFlow('menu')}>
           ← Back
         </button>
-        <button type="button" className="btn btn-secondary btn-sm" disabled={resultsLoading} onClick={() => void loadResults()}>
+        <button
+          type="button"
+          className="btn btn-secondary btn-sm"
+          disabled={resultsLoading}
+          onClick={() => void loadResults({ silent: false })}
+        >
           Refresh
         </button>
       </div>
-      {resultsLoading ? (
-        <p className="text-sm text-muted">Loading…</p>
-      ) : taskOrder.length === 0 ? (
+      {taskOrder.length === 0 ? (
         <p className="text-sm text-muted">No tasks in this sprint.</p>
+      ) : resultsLoading && resultsRows.length === 0 ? (
+        <p className="text-sm text-muted">Loading…</p>
       ) : (
         <ul className="game-results-list">
           {resultsRows.map(row => {
