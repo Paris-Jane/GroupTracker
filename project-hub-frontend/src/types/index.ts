@@ -251,18 +251,8 @@ export interface BulkImportAiBundle {
   tasks: BulkImportTaskDto[];
 }
 
-/** Monday–Friday ISO range for the calendar week containing `date` (local). */
-export function scheduleWeekMonFriContaining(date = new Date()): { start: string; end: string } {
-  const d = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 12, 0, 0, 0);
-  const dow = d.getDay();
-  const mondayOffset = dow === 0 ? -6 : 1 - dow;
-  const mon = new Date(d);
-  mon.setDate(d.getDate() + mondayOffset);
-  const fri = new Date(mon);
-  fri.setDate(mon.getDate() + 4);
-  const iso = (x: Date) =>
-    `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`;
-  return { start: iso(mon), end: iso(fri) };
-}
+/** Fixed Mon–Fri range shown on the team schedule (course week). */
+export const SCHEDULE_VIEW_START = '2026-04-06';
+export const SCHEDULE_VIEW_END = '2026-04-10';
 
 export const POKER_DECK = [0, 1, 2, 3, 5, 8, 13] as const;

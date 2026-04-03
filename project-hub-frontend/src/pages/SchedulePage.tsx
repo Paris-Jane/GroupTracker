@@ -6,7 +6,7 @@ import {
   deleteScheduleItem,
 } from '../api/client';
 import type { GroupMember, ScheduleItem, ScheduleCategory } from '../types';
-import { scheduleWeekMonFriContaining } from '../types';
+import { SCHEDULE_VIEW_START, SCHEDULE_VIEW_END } from '../types';
 
 interface Props {
   currentMember: GroupMember | null;
@@ -80,7 +80,8 @@ export default function SchedulePage({ currentMember, members }: Props) {
     endTime: string;
   } | null>(null);
 
-  const { start: weekStart, end: weekEnd } = useMemo(() => scheduleWeekMonFriContaining(), []);
+  const weekStart = SCHEDULE_VIEW_START;
+  const weekEnd = SCHEDULE_VIEW_END;
   const days = useMemo(() => weekDaysInclusive(weekStart, weekEnd), [weekStart, weekEnd]);
 
   const load = useCallback(
@@ -134,7 +135,9 @@ export default function SchedulePage({ currentMember, members }: Props) {
   return (
     <div className="page schedule-page-full">
       <header className="page-title-block schedule-page-header">
-        <p className="text-muted text-sm schedule-page-hint">Click a day column to add a time block (Mon–Fri this week).</p>
+        <p className="text-muted text-sm schedule-page-hint">
+          Week of <strong>April 6–10, 2026</strong> (Mon–Fri). Click a day column to add a time block.
+        </p>
         <button type="button" className="btn btn-primary btn-sm" onClick={() => openNew()}>
           Add block
         </button>
