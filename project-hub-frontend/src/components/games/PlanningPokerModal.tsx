@@ -45,6 +45,8 @@ export default function PlanningPokerModal({
   const [resultsRows, setResultsRows] = useState<PokerResultsRow[]>([]);
   const [resultsLoading, setResultsLoading] = useState(false);
   const [applyBusy, setApplyBusy] = useState<Record<number, boolean>>({});
+  /** Until parent `sprintTasks` shows the new evaluation, keep UI on this value (same race as pick assign). */
+  const [evalOptimistic, setEvalOptimistic] = useState<Record<number, number>>({});
 
   const sortedTasks = useMemo(
     () => [...sprintTasks].sort((a, b) => a.name.localeCompare(b.name)),
@@ -83,6 +85,7 @@ export default function PlanningPokerModal({
       setDraftLoading(false);
       setSaving(false);
       setApplyBusy({});
+      setEvalOptimistic({});
     }
   }, [open]);
 
@@ -138,13 +141,38 @@ export default function PlanningPokerModal({
     return () => clearInterval(t);
   }, [open, flow, loadResults]);
 
+  useEffect(() => {
+    setEvalOptimistic(prev => {
+      const keys = Object.keys(prev);
+      if (keys.length === 0) return prev;
+      const next = { ...prev };
+      let changed = false;
+      for (const key of keys) {
+        const taskId = Number(key);
+        const want = prev[taskId];
+        const task = sprintTasks.find(t => t.id === taskId);
+        if (task != null && task.evaluation === want) {
+          delete next[taskId];
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [sprintTasks]);
+
   const handleApplyEvaluation = useCallback(
     async (taskId: number, value: number) => {
       if (memberId == null) return;
+      setEvalOptimistic(o => ({ ...o, [taskId]: value }));
       setApplyBusy(b => ({ ...b, [taskId]: true }));
       try {
         await pokerApplyEvaluation(taskId, value, memberId);
         await Promise.resolve(onTasksChanged());
+      } catch {
+        setEvalOptimistic(o => {
+          const { [taskId]: _, ...rest } = o;
+          return rest;
+        });
       } finally {
         setApplyBusy(b => {
           const { [taskId]: _, ...rest } = b;
@@ -296,6 +324,7 @@ export default function PlanningPokerModal({
                   key={row.taskId}
                   row={row}
                   task={task}
+                  displayEvaluation={evalOptimistic[row.taskId]}
                   members={members}
                   currentMemberId={memberId}
                   applying={!!applyBusy[row.taskId]}

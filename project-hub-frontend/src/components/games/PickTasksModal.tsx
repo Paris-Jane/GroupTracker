@@ -142,6 +142,34 @@ export default function PickTasksModal({
     return () => clearInterval(t);
   }, [open, flow, loadResults]);
 
+  /** Drop optimistic assignees only once parent `sprintTasks` matches (avoids flash: promise resolves before React re-renders). */
+  useEffect(() => {
+    setAssignOptimistic(prev => {
+      const keys = Object.keys(prev);
+      if (keys.length === 0) return prev;
+      const map = new Map(sprintTasks.map(t => [t.id, t]));
+      const next = { ...prev };
+      let changed = false;
+      for (const key of keys) {
+        const taskId = Number(key);
+        const want = prev[taskId];
+        if (want === undefined) continue;
+        const task = map.get(taskId);
+        if (!task) continue;
+        const serverIds = task.assignments.map(a => a.groupMemberId).sort((a, b) => a - b);
+        const optimisticIds = [...want].sort((a, b) => a - b);
+        const match =
+          serverIds.length === optimisticIds.length &&
+          serverIds.every((id, i) => id === optimisticIds[i]);
+        if (match) {
+          delete next[taskId];
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [sprintTasks]);
+
   const handlePickToggleAssign = useCallback(
     async (taskId: number, toggleMemberId: number) => {
       if (memberId == null) return;
@@ -158,10 +186,6 @@ export default function PickTasksModal({
       try {
         await assignTask(taskId, nextSnapshot, memberId);
         await Promise.resolve(onTasksChanged?.());
-        setAssignOptimistic(o => {
-          const { [taskId]: _, ...rest } = o;
-          return rest;
-        });
       } catch {
         setAssignOptimistic(o => {
           const { [taskId]: _, ...rest } = o;

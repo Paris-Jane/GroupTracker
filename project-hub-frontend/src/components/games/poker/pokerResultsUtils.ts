@@ -1,4 +1,4 @@
-import { pokerModeValue, type PokerVoteRow } from '../../../api/client';
+import type { PokerVoteRow } from '../../../api/client';
 import type { GroupMember } from '../../../types';
 
 export interface PokerMemberCell {
@@ -10,8 +10,30 @@ export interface PokerMemberCell {
 export interface PokerResultsRow {
   taskId: number;
   byMember: PokerMemberCell[];
-  mode: number | null;
-  modeMemberIds: number[];
+  /** Arithmetic mean of non-null votes, or null if none. */
+  average: number | null;
+  /** Members whose vote is tied for smallest distance to `average`. */
+  closestMemberIds: number[];
+}
+
+function averageAndClosest(byMember: PokerMemberCell[]): { average: number | null; closestMemberIds: number[] } {
+  const vals = byMember.map(x => x.value).filter((x): x is number => x != null);
+  if (vals.length === 0) return { average: null, closestMemberIds: [] };
+  const sum = vals.reduce((a, b) => a + b, 0);
+  const average = sum / vals.length;
+
+  let bestDist = Infinity;
+  for (const cell of byMember) {
+    if (cell.value == null) continue;
+    const d = Math.abs(cell.value - average);
+    if (d < bestDist) bestDist = d;
+  }
+  if (bestDist === Infinity) return { average, closestMemberIds: [] };
+
+  const closestMemberIds = byMember
+    .filter(cell => cell.value != null && Math.abs(cell.value - average) === bestDist)
+    .map(cell => cell.memberId);
+  return { average, closestMemberIds };
 }
 
 export function aggregatePokerRows(
@@ -32,42 +54,49 @@ export function aggregatePokerRows(
       memberName: mem.name,
       value: m.get(mem.id) ?? null,
     }));
-    const mode = pokerModeValue(byMember.map(x => ({ value: x.value })));
-    const modeMemberIds =
-      mode == null ? [] : byMember.filter(x => x.value === mode).map(x => x.memberId);
-    return { taskId, byMember, mode, modeMemberIds };
+    const { average, closestMemberIds } = averageAndClosest(byMember);
+    return { taskId, byMember, average, closestMemberIds };
   });
 }
 
-/** Consensus voters first, then other votes (high → low), then no vote. */
-export function sortPokerMembersForDisplay(cells: PokerMemberCell[], modeMemberIds: number[]): PokerMemberCell[] {
-  const consensus = new Set(modeMemberIds);
+/** Closest to team average first, then by distance, then no vote last. */
+export function sortPokerMembersForDisplay(
+  cells: PokerMemberCell[],
+  average: number | null,
+): PokerMemberCell[] {
   return [...cells].sort((a, b) => {
-    const aC = consensus.has(a.memberId);
-    const bC = consensus.has(b.memberId);
-    if (aC && !bC) return -1;
-    if (!aC && bC) return 1;
     const av = a.value;
     const bv = b.value;
     if (av == null && bv == null) return a.memberName.localeCompare(b.memberName);
     if (av == null) return 1;
     if (bv == null) return -1;
-    if (bv !== av) return bv - av;
+    if (average != null) {
+      const da = Math.abs(av - average);
+      const db = Math.abs(bv - average);
+      if (da !== db) return da - db;
+    }
+    if (bv !== av) return av - bv;
     return a.memberName.localeCompare(b.memberName);
   });
 }
 
-export function formatConsensusSummary(
-  mode: number | null,
-  modeMemberIds: number[],
+function formatAverageNumber(average: number): string {
+  const r = Math.round(average * 10) / 10;
+  return Number.isInteger(r) ? String(r) : r.toFixed(1);
+}
+
+export function formatAverageSummary(
+  average: number | null,
+  closestMemberIds: number[],
   nameById: Map<number, string>,
   hasAnyVote: boolean,
 ): string {
-  if (!hasAnyVote) return 'No votes yet';
-  if (mode == null || modeMemberIds.length === 0) return 'No consensus yet';
-  const names = modeMemberIds.map(id => nameById.get(id) ?? `Teammate #${id}`);
-  if (names.length === 1) return `Consensus: ${mode} (${names[0]})`;
-  return `Consensus: ${mode} (${names.join(', ')})`;
+  if (!hasAnyVote || average == null) return 'No votes yet';
+  const avgStr = formatAverageNumber(average);
+  if (closestMemberIds.length === 0) return `Team average: ${avgStr}`;
+  const names = closestMemberIds.map(id => nameById.get(id) ?? `Teammate #${id}`);
+  if (names.length === 1) return `Team average: ${avgStr} — closest: ${names[0]}`;
+  return `Team average: ${avgStr} — closest: ${names.join(', ')}`;
 }
 
 export function formatEvaluationFooter(evaluation: number | undefined, matchingNames: string[]): string {

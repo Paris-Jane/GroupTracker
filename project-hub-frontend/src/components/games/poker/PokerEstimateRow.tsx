@@ -6,7 +6,8 @@ export interface PokerEstimateRowProps {
   member: GroupMember;
   taskName: string;
   value: number | null;
-  isConsensus: boolean;
+  /** Vote is tied for closest to the team average. */
+  isClosest: boolean;
   isApplied: boolean;
   disabled: boolean;
   busy: boolean;
@@ -17,7 +18,7 @@ export default function PokerEstimateRow({
   member,
   taskName,
   value,
-  isConsensus,
+  isClosest,
   isApplied,
   disabled,
   busy,
@@ -36,7 +37,7 @@ export default function PokerEstimateRow({
   return (
     <button
       type="button"
-      className={`pick-results-row${isConsensus ? ' pick-results-row--recommended' : ''}${isApplied ? ' pick-results-row--applied' : ''}${busy ? ' pick-results-row--busy' : ''}`}
+      className={`pick-results-row${isClosest ? ' pick-results-row--recommended' : ''}${isApplied ? ' pick-results-row--applied' : ''}${busy ? ' pick-results-row--busy' : ''}`}
       style={{ '--pick-row-accent': bg } as CSSProperties}
       disabled={!canAct}
       aria-label={label}
@@ -51,8 +52,8 @@ export default function PokerEstimateRow({
       <span className="pick-results-row-main">
         <span className="pick-results-row-name-line">
           <span className="pick-results-row-name">{member.name}</span>
-          {isConsensus ? (
-            <span className="pick-results-row-badge">Consensus</span>
+          {isClosest ? (
+            <span className="pick-results-row-badge">Closest</span>
           ) : null}
           {isApplied ? (
             <span className="pick-results-row-assigned-mark" aria-hidden title="Applied to task">

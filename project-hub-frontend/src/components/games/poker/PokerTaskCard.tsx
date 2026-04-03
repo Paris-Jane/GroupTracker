@@ -2,7 +2,7 @@ import type { TaskItem, GroupMember } from '../../../types';
 import { pickMemberRecord } from '../pick/pickResultsUtils';
 import PokerEstimateRow from './PokerEstimateRow';
 import {
-  formatConsensusSummary,
+  formatAverageSummary,
   formatEvaluationFooter,
   sortPokerMembersForDisplay,
   type PokerResultsRow,
@@ -11,6 +11,8 @@ import {
 export interface PokerTaskCardProps {
   row: PokerResultsRow;
   task: TaskItem;
+  /** Shown until parent task list catches up after apply (optional). */
+  displayEvaluation?: number;
   members: GroupMember[];
   currentMemberId: number | null;
   applying: boolean;
@@ -20,20 +22,21 @@ export interface PokerTaskCardProps {
 export default function PokerTaskCard({
   row,
   task,
+  displayEvaluation,
   members,
   currentMemberId,
   applying,
   onApplyEstimate,
 }: PokerTaskCardProps) {
-  const sorted = sortPokerMembersForDisplay(row.byMember, row.modeMemberIds);
+  const sorted = sortPokerMembersForDisplay(row.byMember, row.average);
   const nameById = new Map(members.map(m => [m.id, m.name] as const));
   for (const c of row.byMember) {
     if (!nameById.has(c.memberId)) nameById.set(c.memberId, c.memberName);
   }
   const hasAnyVote = row.byMember.some(c => c.value != null);
-  const consensusLine = formatConsensusSummary(row.mode, row.modeMemberIds, nameById, hasAnyVote);
+  const averageLine = formatAverageSummary(row.average, row.closestMemberIds, nameById, hasAnyVote);
 
-  const evalN = task.evaluation;
+  const evalN = displayEvaluation !== undefined ? displayEvaluation : task.evaluation;
   const matchingNames = row.byMember
     .filter(c => c.value != null && c.value === evalN)
     .map(c => c.memberName)
@@ -46,12 +49,12 @@ export default function PokerTaskCard({
     <li className="pick-results-task-card">
       <div className="pick-results-task-head">
         <h3 className="pick-results-task-title">{task.name}</h3>
-        <p className="pick-results-best-fit-summary">{consensusLine}</p>
+        <p className="pick-results-best-fit-summary">{averageLine}</p>
       </div>
       <ul className="pick-results-candidates">
         {sorted.map(cell => {
           const member = pickMemberRecord(members, cell.memberId, cell.memberName);
-          const isConsensus = row.modeMemberIds.includes(cell.memberId);
+          const isClosest = row.closestMemberIds.includes(cell.memberId);
           const isApplied = evalN != null && cell.value != null && cell.value === evalN;
           return (
             <li key={cell.memberId} className="pick-results-candidate-item">
@@ -59,7 +62,7 @@ export default function PokerTaskCard({
                 member={member}
                 taskName={task.name}
                 value={cell.value}
-                isConsensus={isConsensus}
+                isClosest={isClosest}
                 isApplied={isApplied}
                 disabled={!canApply}
                 busy={applying}
