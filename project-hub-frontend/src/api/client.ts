@@ -1488,11 +1488,12 @@ export async function fetchPokerSessionAllVotes(sessionId: number): Promise<{
 const SPRINT_POKER_VALUES = [0, 1, 2, 3, 5, 8, 13] as const;
 
 export async function fetchSprintPickRatingsForMember(sprintNumber: number, memberId: number): Promise<Map<number, number>> {
+  const mid = Number(memberId);
   const { data, error } = await supabase
     .from('sprint_pick_ratings')
     .select('task_item_id,rating')
     .eq('sprint_number', sprintNumber)
-    .eq('group_member_id', memberId);
+    .eq('group_member_id', mid);
   if (error) err(error, 'Failed to load pick ratings');
   const m = new Map<number, number>();
   for (const r of data ?? []) {
@@ -1507,19 +1508,20 @@ export async function saveSprintPickRatings(
   memberId: number,
   entries: { taskItemId: number; rating: number | null }[],
 ): Promise<void> {
+  const mid = Number(memberId);
   for (const { taskItemId, rating } of entries) {
     const { error: delErr } = await supabase
       .from('sprint_pick_ratings')
       .delete()
       .eq('sprint_number', sprintNumber)
       .eq('task_item_id', taskItemId)
-      .eq('group_member_id', memberId);
+      .eq('group_member_id', mid);
     if (delErr) err(delErr, 'Failed to clear pick rating');
     if (rating != null && rating >= 1 && rating <= 5) {
       const { error } = await supabase.from('sprint_pick_ratings').insert({
         sprint_number: sprintNumber,
         task_item_id: taskItemId,
-        group_member_id: memberId,
+        group_member_id: mid,
         rating,
         updated_at: new Date().toISOString(),
       });
@@ -1542,11 +1544,12 @@ export async function fetchSprintPickRatingsAggregated(sprintNumber: number): Pr
 }
 
 export async function fetchSprintPokerVotesForMember(sprintNumber: number, memberId: number): Promise<Map<number, number>> {
+  const mid = Number(memberId);
   const { data, error } = await supabase
     .from('sprint_poker_votes')
     .select('task_item_id,value')
     .eq('sprint_number', sprintNumber)
-    .eq('group_member_id', memberId);
+    .eq('group_member_id', mid);
   if (error) err(error, 'Failed to load poker votes');
   const m = new Map<number, number>();
   for (const r of data ?? []) {
@@ -1561,19 +1564,20 @@ export async function saveSprintPokerVotes(
   memberId: number,
   entries: { taskItemId: number; value: number | null }[],
 ): Promise<void> {
+  const mid = Number(memberId);
   for (const { taskItemId, value } of entries) {
     const { error: delErr } = await supabase
       .from('sprint_poker_votes')
       .delete()
       .eq('sprint_number', sprintNumber)
       .eq('task_item_id', taskItemId)
-      .eq('group_member_id', memberId);
+      .eq('group_member_id', mid);
     if (delErr) err(delErr, 'Failed to clear poker vote');
     if (value != null && (SPRINT_POKER_VALUES as readonly number[]).includes(value)) {
       const { error } = await supabase.from('sprint_poker_votes').insert({
         sprint_number: sprintNumber,
         task_item_id: taskItemId,
-        group_member_id: memberId,
+        group_member_id: mid,
         value,
         updated_at: new Date().toISOString(),
       });

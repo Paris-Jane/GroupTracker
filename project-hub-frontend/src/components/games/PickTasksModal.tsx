@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import type { TaskItem, GroupMember } from '../../types';
 import {
   fetchSprintPickRatingsForMember,
@@ -43,6 +44,12 @@ function aggregatePickRows(
   });
 }
 
+function normalizeMemberId(id: number | null): number | null {
+  if (id == null) return null;
+  const n = Number(id);
+  return Number.isFinite(n) ? n : null;
+}
+
 export default function PickTasksModal({
   open,
   onClose,
@@ -60,6 +67,8 @@ export default function PickTasksModal({
   currentMemberId: number | null;
   onTasksChanged?: () => void;
 }) {
+  const memberId = useMemo(() => normalizeMemberId(currentMemberId), [currentMemberId]);
+
   const [flow, setFlow] = useState<Flow>('menu');
   const [draft, setDraft] = useState<Record<number, number | ''>>({});
   const [draftLoading, setDraftLoading] = useState(false);
@@ -99,10 +108,10 @@ export default function PickTasksModal({
   }, [open]);
 
   useEffect(() => {
-    if (!open || flow !== 'rank' || !currentMemberId) return;
+    if (!open || flow !== 'rank' || memberId == null) return;
     let cancelled = false;
     setDraftLoading(true);
-    fetchSprintPickRatingsForMember(sprintNumber, currentMemberId)
+    fetchSprintPickRatingsForMember(sprintNumber, memberId)
       .then(m => {
         if (cancelled) return;
         const tasks = sortedTasksRef.current;
@@ -127,7 +136,7 @@ export default function PickTasksModal({
     return () => {
       cancelled = true;
     };
-  }, [open, flow, sprintNumber, currentMemberId]);
+  }, [open, flow, sprintNumber, memberId]);
 
   const loadResults = useCallback(async () => {
     setResultsLoading(true);
@@ -150,7 +159,7 @@ export default function PickTasksModal({
   }, [open, flow, loadResults]);
 
   const saveRankings = async () => {
-    if (!currentMemberId) return;
+    if (memberId == null) return;
     setSaveError('');
     setSaving(true);
     try {
@@ -162,7 +171,7 @@ export default function PickTasksModal({
           rating: rating != null && !Number.isNaN(rating) ? rating : null,
         };
       });
-      await saveSprintPickRatings(sprintNumber, currentMemberId, entries);
+      await saveSprintPickRatings(sprintNumber, memberId, entries);
       onTasksChanged?.();
     } catch {
       setSaveError('Could not save. Check your connection and try again.');
@@ -201,7 +210,7 @@ export default function PickTasksModal({
         How comfortable are you taking each task? Tap a card (1 = low, 5 = high). Save when done — reopen anytime to
         edit.
       </p>
-      {!currentMemberId ? (
+      {memberId == null ? (
         <p className="text-sm text-muted">Sign in to rank tasks.</p>
       ) : sortedTasks.length === 0 ? (
         <p className="text-sm text-muted">No tasks in this sprint yet.</p>
@@ -214,26 +223,36 @@ export default function PickTasksModal({
           ) : null}
           <ul className="sprint-game-rank-list">
             {sortedTasks.map(t => (
-              <li key={t.id} className="sprint-game-rank-row card">
-                <span className="sprint-game-rank-task-name">{t.name}</span>
-                <div className="sprint-pick-comfort-row sprint-game-deck" aria-label="Comfort level">
-                  {COMFORT_CARDS.map(n => (
+              <li key={t.id} className="sprint-game-rank-item">
+                <div className="sprint-game-rank-panel">
+                  <span className="sprint-game-rank-task-name">{t.name}</span>
+                  <div className="sprint-pick-comfort-row sprint-game-deck" aria-label="Comfort level">
+                    {COMFORT_CARDS.map(n => (
+                      <button
+                        key={n}
+                        type="button"
+                        className={`sprint-game-tile${effectiveDraft[t.id] === n ? ' sprint-game-tile--on' : ''}`}
+                        onClick={e => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setDraft(d => ({ ...d, [t.id]: n }));
+                        }}
+                      >
+                        {n}
+                      </button>
+                    ))}
                     <button
-                      key={n}
                       type="button"
-                      className={`btn btn-secondary btn-sm sprint-poker-card${effectiveDraft[t.id] === n ? ' btn-primary' : ''}`}
-                      onClick={() => setDraft(d => ({ ...d, [t.id]: n }))}
+                      className="sprint-game-tile sprint-game-tile-clear"
+                      onClick={e => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setDraft(d => ({ ...d, [t.id]: '' }));
+                      }}
                     >
-                      {n}
+                      Clear
                     </button>
-                  ))}
-                  <button
-                    type="button"
-                    className="btn btn-ghost btn-sm"
-                    onClick={() => setDraft(d => ({ ...d, [t.id]: '' }))}
-                  >
-                    Clear
-                  </button>
+                  </div>
                 </div>
               </li>
             ))}
@@ -287,7 +306,7 @@ export default function PickTasksModal({
                     </div>
                   ))}
                 </div>
-                {row.topMemberIds.length > 0 && currentMemberId ? (
+                {row.topMemberIds.length > 0 && memberId != null ? (
                   <div className="game-results-assign flex gap-2 flex-wrap mt-2">
                     {row.topMemberIds.map(mid => (
                       <button
@@ -298,7 +317,7 @@ export default function PickTasksModal({
                         onClick={async () => {
                           setSaving(true);
                           try {
-                            await assignTask(row.taskId, [mid], currentMemberId ?? undefined);
+                            await assignTask(row.taskId, [mid], memberId);
                             onTasksChanged?.();
                           } finally {
                             setSaving(false);
@@ -318,11 +337,13 @@ export default function PickTasksModal({
     </div>
   );
 
-  return (
-    <div className="modal-overlay">
-      <div className="modal modal-lg">
+  return createPortal(
+    <div className="modal-overlay modal-overlay--portal">
+      <div className="modal modal-lg" role="dialog" aria-modal="true" aria-labelledby="pick-modal-title">
         <div className="modal-header">
-          <span className="modal-title">Pick tasks · Sprint {sprintNumber}</span>
+          <span className="modal-title" id="pick-modal-title">
+            Pick tasks · Sprint {sprintNumber}
+          </span>
           <button type="button" className="btn btn-ghost btn-sm" onClick={onClose}>
             Close
           </button>
@@ -331,6 +352,7 @@ export default function PickTasksModal({
           {flow === 'menu' ? menuView : flow === 'rank' ? rankView : resultsView}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import type { TaskItem, GroupMember } from '../../types';
 import {
   fetchSprintPokerVotesForMember,
@@ -44,6 +45,12 @@ function aggregatePokerRows(
   });
 }
 
+function normalizeMemberId(id: number | null): number | null {
+  if (id == null) return null;
+  const n = Number(id);
+  return Number.isFinite(n) ? n : null;
+}
+
 export default function PlanningPokerModal({
   open,
   onClose,
@@ -61,6 +68,8 @@ export default function PlanningPokerModal({
   currentMemberId: number | null;
   onTasksChanged: () => void;
 }) {
+  const memberId = useMemo(() => normalizeMemberId(currentMemberId), [currentMemberId]);
+
   const [flow, setFlow] = useState<Flow>('menu');
   const [draft, setDraft] = useState<Record<number, number | ''>>({});
   const [saveError, setSaveError] = useState('');
@@ -100,10 +109,10 @@ export default function PlanningPokerModal({
   }, [open]);
 
   useEffect(() => {
-    if (!open || flow !== 'play' || !currentMemberId) return;
+    if (!open || flow !== 'play' || memberId == null) return;
     let cancelled = false;
     setDraftLoading(true);
-    fetchSprintPokerVotesForMember(sprintNumber, currentMemberId)
+    fetchSprintPokerVotesForMember(sprintNumber, memberId)
       .then(m => {
         if (cancelled) return;
         const tasks = sortedTasksRef.current;
@@ -128,7 +137,7 @@ export default function PlanningPokerModal({
     return () => {
       cancelled = true;
     };
-  }, [open, flow, sprintNumber, currentMemberId]);
+  }, [open, flow, sprintNumber, memberId]);
 
   const loadResults = useCallback(async () => {
     setResultsLoading(true);
@@ -151,7 +160,7 @@ export default function PlanningPokerModal({
   }, [open, flow, loadResults]);
 
   const saveVotes = async () => {
-    if (!currentMemberId) return;
+    if (memberId == null) return;
     setSaveError('');
     setSaving(true);
     try {
@@ -163,7 +172,7 @@ export default function PlanningPokerModal({
           value: value != null && !Number.isNaN(value) ? value : null,
         };
       });
-      await saveSprintPokerVotes(sprintNumber, currentMemberId, entries);
+      await saveSprintPokerVotes(sprintNumber, memberId, entries);
       onTasksChanged();
     } catch {
       setSaveError('Could not save. Check your connection and try again.');
@@ -202,7 +211,7 @@ export default function PlanningPokerModal({
       <p className="text-sm text-muted mb-3">
         How difficult is each task? Choose 0, 1, 2, 3, 5, 8, or 13. Save when done — reopen anytime to edit.
       </p>
-      {!currentMemberId ? (
+      {memberId == null ? (
         <p className="text-sm text-muted">Sign in to play poker.</p>
       ) : sortedTasks.length === 0 ? (
         <p className="text-sm text-muted">No tasks in this sprint yet.</p>
@@ -215,26 +224,36 @@ export default function PlanningPokerModal({
           ) : null}
           <ul className="sprint-game-rank-list">
             {sortedTasks.map(t => (
-              <li key={t.id} className="sprint-game-rank-row card">
-                <span className="sprint-game-rank-task-name">{t.name}</span>
-                <div className="sprint-poker-deck-row sprint-game-deck">
-                  {DECK.map(v => (
+              <li key={t.id} className="sprint-game-rank-item">
+                <div className="sprint-game-rank-panel">
+                  <span className="sprint-game-rank-task-name">{t.name}</span>
+                  <div className="sprint-poker-deck-row sprint-game-deck">
+                    {DECK.map(v => (
+                      <button
+                        key={v}
+                        type="button"
+                        className={`sprint-game-tile${effectiveDraft[t.id] === v ? ' sprint-game-tile--on' : ''}`}
+                        onClick={e => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setDraft(d => ({ ...d, [t.id]: v }));
+                        }}
+                      >
+                        {v}
+                      </button>
+                    ))}
                     <button
-                      key={v}
                       type="button"
-                      className={`btn btn-secondary btn-sm sprint-poker-card${effectiveDraft[t.id] === v ? ' btn-primary' : ''}`}
-                      onClick={() => setDraft(d => ({ ...d, [t.id]: v }))}
+                      className="sprint-game-tile sprint-game-tile-clear"
+                      onClick={e => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setDraft(d => ({ ...d, [t.id]: '' }));
+                      }}
                     >
-                      {v}
+                      Clear
                     </button>
-                  ))}
-                  <button
-                    type="button"
-                    className="btn btn-ghost btn-sm"
-                    onClick={() => setDraft(d => ({ ...d, [t.id]: '' }))}
-                  >
-                    Clear
-                  </button>
+                  </div>
                 </div>
               </li>
             ))}
@@ -290,7 +309,7 @@ export default function PlanningPokerModal({
                     </div>
                   ))}
                 </div>
-                {currentMemberId ? (
+                {memberId != null ? (
                   <div className="game-results-assign flex gap-2 flex-wrap mt-2">
                     {row.mode != null ? (
                       <button
@@ -302,7 +321,7 @@ export default function PlanningPokerModal({
                           if (m == null) return;
                           setSaving(true);
                           try {
-                            await pokerApplyEvaluation(row.taskId, m, currentMemberId ?? undefined);
+                            await pokerApplyEvaluation(row.taskId, m, memberId);
                             onTasksChanged();
                           } finally {
                             setSaving(false);
@@ -321,7 +340,7 @@ export default function PlanningPokerModal({
                         onClick={async () => {
                           setSaving(true);
                           try {
-                            await assignTask(row.taskId, [mid], currentMemberId ?? undefined);
+                            await assignTask(row.taskId, [mid], memberId);
                             onTasksChanged();
                           } finally {
                             setSaving(false);
@@ -341,11 +360,13 @@ export default function PlanningPokerModal({
     </div>
   );
 
-  return (
-    <div className="modal-overlay">
-      <div className="modal modal-lg">
+  return createPortal(
+    <div className="modal-overlay modal-overlay--portal">
+      <div className="modal modal-lg" role="dialog" aria-modal="true" aria-labelledby="poker-modal-title">
         <div className="modal-header">
-          <span className="modal-title">Planning poker · Sprint {sprintNumber}</span>
+          <span className="modal-title" id="poker-modal-title">
+            Planning poker · Sprint {sprintNumber}
+          </span>
           <button type="button" className="btn btn-ghost btn-sm" onClick={onClose}>
             Close
           </button>
@@ -354,6 +375,7 @@ export default function PlanningPokerModal({
           {flow === 'menu' ? menuView : flow === 'play' ? playView : resultsView}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
