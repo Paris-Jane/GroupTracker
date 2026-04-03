@@ -16,8 +16,6 @@ import ConfirmDialog from '../components/common/ConfirmDialog';
 import BulkImportModal from '../components/Tasks/BulkImportModal';
 import TaskFormModal from '../components/Tasks/TaskFormModal';
 import QuickTasksModal from '../components/Tasks/QuickTasksModal';
-import PlanningPokerModal from '../components/games/PlanningPokerModal';
-import PickTasksModal from '../components/games/PickTasksModal';
 import {
   TaskFilters,
   type TasksSortKey,
@@ -98,9 +96,8 @@ function loadTaskColumns(): TaskColumnKey[] {
   }
 }
 
-function taskListGridColumns(batchMode: boolean, cols: TaskColumnKey[]): string {
-  const parts: string[] = [];
-  if (batchMode) parts.push('40px');
+function taskListGridColumns(cols: TaskColumnKey[]): string {
+  const parts: string[] = ['40px'];
   const w: Record<TaskColumnKey, string> = {
     task: 'minmax(0, 1fr)',
     sprint: '52px',
@@ -129,7 +126,7 @@ interface TaskRowProps {
   task: TaskItem;
   members: GroupMember[];
   visibleColumns: TaskColumnKey[];
-  batchMode: boolean;
+  selectionArmed: boolean;
   selected: boolean;
   onToggleSelect: () => void;
   gridTemplateColumns: string;
@@ -142,7 +139,7 @@ function TaskRow({
   task,
   members,
   visibleColumns,
-  batchMode,
+  selectionArmed,
   selected,
   onToggleSelect,
   gridTemplateColumns,
@@ -340,7 +337,7 @@ function TaskRow({
   };
 
   return (
-    <div className="task-row-wrap">
+    <div className={`task-row-wrap${selectionArmed ? ' task-row-wrap--select-armed' : ''}`}>
       <div
         role="button"
         tabIndex={0}
@@ -354,16 +351,14 @@ function TaskRow({
           }
         }}
       >
-        {batchMode ? (
-          <div className="task-row-select" onClick={e => e.stopPropagation()} onKeyDown={e => e.stopPropagation()}>
-            <input
-              type="checkbox"
-              checked={selected}
-              onChange={() => onToggleSelect()}
-              aria-label={`Select ${task.name}`}
-            />
-          </div>
-        ) : null}
+        <div className="task-row-select" onClick={e => e.stopPropagation()} onKeyDown={e => e.stopPropagation()}>
+          <input
+            type="checkbox"
+            checked={selected}
+            onChange={() => onToggleSelect()}
+            aria-label={`Select ${task.name}`}
+          />
+        </div>
         {visibleColumns.map(col => (
           <div key={col} className={`task-row-cell task-row-cell--${col}`}>
             {renderColumn(col)}
@@ -389,14 +384,13 @@ export default function TasksPage({ currentMember, members }: Props) {
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [showBulkImport, setShowBulkImport] = useState(false);
   const [showQuickTasks, setShowQuickTasks] = useState(false);
-  const [showPoker, setShowPoker] = useState(false);
-  const [showPick, setShowPick] = useState(false);
+  const [bulkAddOpen, setBulkAddOpen] = useState(false);
+  const bulkAddRef = useRef<HTMLDivElement>(null);
   const [filterStatus, setFilterStatus] = useState<TaskStatus | ''>('');
   const [filterSprint, setFilterSprint] = useState<number | ''>('');
   const [filterAssigneeIds, setFilterAssigneeIds] = useState<number[]>([]);
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [visibleColumns, setVisibleColumns] = useState<TaskColumnKey[]>(loadTaskColumns);
-  const [batchMode, setBatchMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [bulkAssigneeIds, setBulkAssigneeIds] = useState<number[]>([]);
   const [bulkSprint, setBulkSprint] = useState<number | ''>('');
@@ -414,8 +408,13 @@ export default function TasksPage({ currentMember, members }: Props) {
   }, [visibleColumns]);
 
   useEffect(() => {
-    if (!batchMode) setSelectedIds([]);
-  }, [batchMode]);
+    if (!bulkAddOpen) return;
+    const close = (e: MouseEvent) => {
+      if (bulkAddRef.current && !bulkAddRef.current.contains(e.target as Node)) setBulkAddOpen(false);
+    };
+    document.addEventListener('mousedown', close);
+    return () => document.removeEventListener('mousedown', close);
+  }, [bulkAddOpen]);
 
   const load = useCallback(() => {
     getTasks().then(setTasks);
@@ -531,10 +530,9 @@ export default function TasksPage({ currentMember, members }: Props) {
     }
   };
 
-  const gridCols = useMemo(
-    () => taskListGridColumns(batchMode, visibleColumns),
-    [batchMode, visibleColumns],
-  );
+  const selectionArmed = selectedIds.length > 0;
+
+  const gridCols = useMemo(() => taskListGridColumns(visibleColumns), [visibleColumns]);
 
   const toggleRowSelect = (id: number) => {
     setSelectedIds(prev => (prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]));
@@ -611,36 +609,52 @@ export default function TasksPage({ currentMember, members }: Props) {
 
   return (
     <div className="page tasks-page">
-      <header className="page-title-block page-title-block--split">
-        <div className="page-actions">
-          <button type="button" className="btn btn-ghost btn-sm" onClick={() => setShowPoker(true)}>
-            Poker
-          </button>
-          <button type="button" className="btn btn-ghost btn-sm" onClick={() => setShowPick(true)}>
-            Pick
-          </button>
-          <button type="button" className="btn btn-secondary btn-sm" onClick={() => setShowBulkImport(true)}>
-            Import
-          </button>
-          <button type="button" className="btn btn-secondary btn-sm" onClick={() => setShowQuickTasks(true)}>
-            Quick tasks
-          </button>
-          <button type="button" className="btn btn-primary btn-sm" onClick={() => setEditingTask('new')}>
-            New task
-          </button>
-          <button
-            type="button"
-            className={`btn btn-secondary btn-sm${batchMode ? ' is-on' : ''}`}
-            onClick={() => setBatchMode(b => !b)}
-          >
-            Batch edit
-          </button>
-        </div>
-      </header>
-
       <TaskFilters
         search={search}
         onSearchChange={setSearch}
+        toolbarActions={
+          <>
+            <button type="button" className="btn btn-primary btn-sm" onClick={() => setEditingTask('new')}>
+              New task
+            </button>
+            <div className="tasks-bulk-add-wrap" ref={bulkAddRef}>
+              <button
+                type="button"
+                className={`btn btn-secondary btn-sm${bulkAddOpen ? ' is-on' : ''}`}
+                onClick={() => setBulkAddOpen(o => !o)}
+                aria-expanded={bulkAddOpen}
+              >
+                Bulk add ▾
+              </button>
+              {bulkAddOpen ? (
+                <div className="tasks-bulk-add-menu panel" role="menu">
+                  <button
+                    type="button"
+                    className="tasks-bulk-add-menu-item"
+                    role="menuitem"
+                    onClick={() => {
+                      setBulkAddOpen(false);
+                      setShowBulkImport(true);
+                    }}
+                  >
+                    Use AI / import
+                  </button>
+                  <button
+                    type="button"
+                    className="tasks-bulk-add-menu-item"
+                    role="menuitem"
+                    onClick={() => {
+                      setBulkAddOpen(false);
+                      setShowQuickTasks(true);
+                    }}
+                  >
+                    Manually add
+                  </button>
+                </div>
+              ) : null}
+            </div>
+          </>
+        }
         filtersOpen={filtersOpen}
         onToggleFilters={() => setFiltersOpen(o => !o)}
         filterStatus={filterStatus}
@@ -667,7 +681,7 @@ export default function TasksPage({ currentMember, members }: Props) {
         onChangeVisibleColumns={setVisibleColumns}
       />
 
-      {batchMode && selectedIds.length > 0 ? (
+      {selectedIds.length > 0 ? (
         <div className="tasks-batch-bar panel">
           <div className="tasks-batch-bar-head">
             <strong>{selectedIds.length}</strong>
@@ -773,17 +787,20 @@ export default function TasksPage({ currentMember, members }: Props) {
         </div>
       ) : null}
 
-      <div className="task-list-header" style={{ gridTemplateColumns: gridCols }} aria-hidden>
-        {batchMode ? (
-          <span className="task-list-header-select">
+      <div
+        className={`task-list-header${selectionArmed ? ' task-list-header--armed' : ''}`}
+        style={{ gridTemplateColumns: gridCols }}
+      >
+        <span className="task-list-header-select">
+          {selectionArmed ? (
             <input
               type="checkbox"
               checked={visible.length > 0 && visible.every(t => selectedIds.includes(t.id))}
               onChange={selectAllVisible}
               aria-label="Select all visible tasks"
             />
-          </span>
-        ) : null}
+          ) : null}
+        </span>
         {visibleColumns.map(col => (
           <span key={col} className={col === 'users' ? 'task-list-header-assignee' : undefined}>
             {col === 'task'
@@ -830,14 +847,14 @@ export default function TasksPage({ currentMember, members }: Props) {
           )}
         </div>
       ) : (
-        <div className="task-list">
+        <div className={`task-list${selectionArmed ? ' task-list--select-armed' : ''}`}>
           {visible.map(task => (
             <TaskRow
               key={task.id}
               task={task}
               members={members}
               visibleColumns={visibleColumns}
-              batchMode={batchMode}
+              selectionArmed={selectionArmed}
               selected={selectedIds.includes(task.id)}
               onToggleSelect={() => toggleRowSelect(task.id)}
               gridTemplateColumns={gridCols}
@@ -899,22 +916,6 @@ export default function TasksPage({ currentMember, members }: Props) {
           }}
         />
       )}
-      <PlanningPokerModal
-        open={showPoker}
-        onClose={() => setShowPoker(false)}
-        tasks={tasks}
-        members={members}
-        currentMemberId={currentMember?.id ?? null}
-        onTasksChanged={load}
-      />
-      <PickTasksModal
-        open={showPick}
-        onClose={() => setShowPick(false)}
-        tasks={tasks}
-        members={members}
-        currentMemberId={currentMember?.id ?? null}
-        onTasksChanged={load}
-      />
       {showQuickTasks && (
         <QuickTasksModal
           currentMemberId={currentMember?.id ?? null}

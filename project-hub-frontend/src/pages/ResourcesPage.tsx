@@ -275,7 +275,7 @@ export default function ResourcesPage({}: Props) {
           reorderable
           rows={links.map(l => ({
             id: l.id,
-            primary: l.url || '(no URL)',
+            primary: l.title?.trim() || '(untitled)',
             onEdit: () => {
               setManageScope(null);
               setEditingLink(l);
@@ -319,7 +319,7 @@ export default function ResourcesPage({}: Props) {
             .filter(r => r.classCategory === manageScope.cat)
             .map(r => ({
               id: r.id,
-              primary: r.url || r.title || '(no URL)',
+              primary: r.title?.trim() || '(untitled)',
               onEdit: () => {
                 setManageScope(null);
                 setEditingResource(r);

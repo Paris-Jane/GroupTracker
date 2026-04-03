@@ -15,21 +15,7 @@ interface Props {
   onImported: () => void;
 }
 
-const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
-
-function buildAiPrompt(sprintCount: number, sprintDeadlines: string[], rubric: string): string {
-  const deadlineLines = sprintDeadlines
-    .map(
-      (d, i) =>
-        `- Sprint ${i + 1} ends on: **${d}** → sprintGoals[${i}].sprintDueDate must be exactly \`${d}\`. All tasks with sprintNumber ${i + 1} must have deadline ≤ this date.`,
-    )
-    .join('\n');
-
-  const timelineHint = sprintDeadlines
-    .filter(Boolean)
-    .map((d, i) => `S${i + 1}≤${d}`)
-    .join(' → ');
-
+function buildAiPrompt(sprintCount: number): string {
   const jsonExample = `{
   "productGoal": "One clear sentence: what the team is building and for whom",
   "sprintGoals": [
@@ -57,86 +43,32 @@ function buildAiPrompt(sprintCount: number, sprintDeadlines: string[], rubric: s
   ]
 }`;
 
-  return `You are a project planner for a student software team. The sprint count and end dates below are **fixed by the instructor/admin** — copy them exactly into sprintGoals; do not invent different dates or sprint counts.
+  return `You are a project planner for a student software team.
 
-## Fixed sprint calendar (${sprintCount} sprints, chronological)
-${deadlineLines}
-Timeline constraint summary: ${timelineHint || '(see above)'}
+## Inputs (files — not pasted in this message)
+The user will **attach** their project description, rubric, syllabus, requirements, or other documents as **files** in the AI chat. You do **not** receive that text in this prompt body. Read every attachment carefully; they are the primary source of truth for scope, grading criteria, and deadlines mentioned there.
 
 ## What you must produce
 1. **productGoal** — One sentence: product outcome, primary users, and success in plain language.
-2. **sprintGoals** — Exactly ${sprintCount} objects, sprintNumber 1..${sprintCount} in order. Each goal is a concrete outcome for that sprint. **sprintDueDate** must match the fixed date for that sprint above (YYYY-MM-DD).
-3. **tasks** — A complete backlog that covers **everything** implied by the rubric/description: features, docs, testing, deployment, demos, presentations, reviews, and any graded deliverables. **Nothing important should be missing.** If the rubric lists sections or percentages, mirror those as tasks or subtasks where sensible.
+2. **sprintGoals** — Exactly ${sprintCount} objects, sprintNumber 1..${sprintCount} in order. Each goal is a concrete outcome for that sprint. Include **sprintDueDate** as YYYY-MM-DD for each sprint when the attachments specify dates; otherwise infer sensible end-of-sprint dates that stay consistent across goals and tasks.
+3. **tasks** — A complete backlog covering **everything** in the attachments: features, docs, testing, deployment, demos, presentations, reviews, and graded deliverables. **Nothing important should be missing.**
 
-## Chronological logic (critical)
-- **Sprint order:** Earlier sprints should contain prerequisites: research, design, setup, spikes, scaffolding, data model, APIs. Later sprints: integration, hardening, UX polish, bug bashes, rehearsal, final demo, submission tasks.
-- **Task deadlines:** Each task's \`deadline\` must be a valid YYYY-MM-DD **on or before** the sprintDueDate of its \`sprintNumber\`. Prefer spreading work through the sprint (earlier tasks due mid-sprint, milestones near sprint end) rather than piling everything on the last day unless the rubric says otherwise.
-- **Within a sprint:** Order tasks in a sensible sequence (dependencies respected implicitly: e.g. don't put "deploy app" only in sprint 1 if the rubric expects a working build in sprint 3).
-- **Completeness check:** Before you finish, mentally verify: every rubric bullet, milestone, and artifact type appears in at least one task or subtask; add tasks if anything was skipped.
+## Chronological logic
+- Earlier sprints: research, design, setup, spikes, scaffolding. Later sprints: integration, polish, demos, submission.
+- Each task \`deadline\` should be YYYY-MM-DD on or before the **sprintDueDate** of its \`sprintNumber\` when those dates exist.
 
 ## JSON rules
-- Return **only** valid JSON (no markdown code fences, no commentary before or after).
-- Root object keys: "productGoal" (string), "sprintGoals" (array length ${sprintCount}), "tasks" (array).
-- Every task must have \`sprintNumber\` in 1..${sprintCount}.
-- priority: "High" | "Medium" | "Low" only. status: "NotStarted" | "InProgress" | "Completed" (default new work "NotStarted").
-- category: prefer "SprintBacklog"; "ProductBacklog" only if truly pre–sprint 1 (rare).
-- subtaskNames / assigneeNames may be []. assigneeNames: real member names if known, else [].
+- Return **only** valid JSON (no markdown fences, no commentary).
+- Root keys: "productGoal" (string), "sprintGoals" (array length ${sprintCount}), "tasks" (array).
+- Every task: \`sprintNumber\` in 1..${sprintCount}.
+- priority: "High" | "Medium" | "Low". status: "NotStarted" | "InProgress" | "Completed" (default "NotStarted").
+- category: prefer "SprintBacklog". subtaskNames / assigneeNames may be [].
 
-## Output shape (example structure only — use real dates from the fixed calendar above)
+## Example shape (structure only — replace with content from the attachments)
 
 ${jsonExample}
-
----
-## PROJECT DESCRIPTION / RUBRIC (primary source — mine this for full coverage)
-${rubric.trim() || '(No rubric pasted yet — infer a sensible breakdown from typical course project expectations, still respecting the fixed sprint dates.)'}
 `;
 }
-
-const SAMPLE_OUTPUT = `{
-  "productGoal": "A course project web app that helps teams track sprints, tasks, and reviews in one place.",
-  "sprintGoals": [
-    {
-      "sprintNumber": 1,
-      "goal": "Finish research and requirements",
-      "sprintDueDate": "2026-04-10"
-    },
-    {
-      "sprintNumber": 2,
-      "goal": "Build core features and test",
-      "sprintDueDate": "2026-04-24"
-    }
-  ],
-  "tasks": [
-    {
-      "name": "Draft requirements doc",
-      "description": "Scope, users, success criteria",
-      "estimatedTime": "3 hours",
-      "deadline": "2026-04-08",
-      "priority": "High",
-      "isRequired": true,
-      "status": "NotStarted",
-      "sprintNumber": 1,
-      "category": "SprintBacklog",
-      "tags": "Docs",
-      "subtaskNames": ["Outline", "Review with team"],
-      "assigneeNames": []
-    },
-    {
-      "name": "Implement API endpoints",
-      "description": "CRUD for main entities",
-      "estimatedTime": "8 hours",
-      "deadline": "2026-04-22",
-      "priority": "High",
-      "isRequired": true,
-      "status": "NotStarted",
-      "sprintNumber": 2,
-      "category": "SprintBacklog",
-      "tags": "Backend",
-      "subtaskNames": [],
-      "assigneeNames": []
-    }
-  ]
-}`;
 
 function normalizeTask(raw: unknown, index: number): BulkImportTaskDto {
   if (!raw || typeof raw !== 'object') throw new Error(`Task ${index + 1}: expected an object.`);
@@ -217,7 +149,7 @@ function normalizeSprintGoal(raw: unknown, index: number): BulkImportSprintGoalD
 }
 
 const STEP_TABS: { step: 'prompt' | 'paste' | 'preview'; label: string }[] = [
-  { step: 'prompt', label: 'Sprint setup & prompt' },
+  { step: 'prompt', label: 'Prompt' },
   { step: 'paste', label: 'Paste AI output' },
   { step: 'preview', label: 'Preview & import' },
 ];
@@ -225,11 +157,10 @@ const STEP_TABS: { step: 'prompt' | 'paste' | 'preview'; label: string }[] = [
 export default function BulkImportModal({ currentMember, onClose, onImported }: Props) {
   const [step, setStep] = useState<'prompt' | 'paste' | 'preview'>('prompt');
   const [sprintCount, setSprintCount] = useState(1);
-  const [deadlines, setDeadlines] = useState<string[]>(['']);
   const [settingsLoaded, setSettingsLoaded] = useState(false);
   const [settingsLoadError, setSettingsLoadError] = useState<string | null>(null);
-  const [rubric, setRubric] = useState('');
   const [pasteText, setPasteText] = useState('');
+  const [promptCopied, setPromptCopied] = useState(false);
   const [previewGoals, setPreviewGoals] = useState<BulkImportSprintGoalDto[]>([]);
   const [previewTasks, setPreviewTasks] = useState<BulkImportTaskDto[]>([]);
   const [previewProductGoal, setPreviewProductGoal] = useState('');
@@ -243,10 +174,7 @@ export default function BulkImportModal({ currentMember, onClose, onImported }: 
       .then(s => {
         if (cancelled) return;
         const n = Math.max(1, Math.min(50, s.sprintCount ?? 6));
-        const d = [...(s.sprintDeadlines ?? [])];
-        while (d.length < n) d.push('');
         setSprintCount(n);
-        setDeadlines(d.slice(0, n));
         setSettingsLoaded(true);
       })
       .catch(() => {
@@ -260,12 +188,7 @@ export default function BulkImportModal({ currentMember, onClose, onImported }: 
     };
   }, []);
 
-  const fullPrompt = useMemo(
-    () => buildAiPrompt(sprintCount, deadlines, rubric),
-    [sprintCount, deadlines, rubric],
-  );
-
-  const deadlinesValid = deadlines.slice(0, sprintCount).every(d => DATE_RE.test(d));
+  const fullPrompt = useMemo(() => buildAiPrompt(sprintCount), [sprintCount]);
 
   const goToStep = (s: 'prompt' | 'paste' | 'preview') => {
     setError('');
@@ -313,12 +236,17 @@ export default function BulkImportModal({ currentMember, onClose, onImported }: 
     setImporting(true);
     setError('');
     try {
+      const tasksToImport = previewTasks.map(t => ({ ...t, name: t.name.trim() })).filter(t => t.name);
+      if (tasksToImport.length === 0) {
+        setError('Add at least one task with a name before importing.');
+        return;
+      }
       if (previewGoals.length > 0) {
-        await bulkImportSprintBundle(previewGoals, previewTasks, currentMember?.id, {
+        await bulkImportSprintBundle(previewGoals, tasksToImport, currentMember?.id, {
           productGoal: previewProductGoal || undefined,
         });
       } else {
-        await bulkImportTasks(previewTasks, currentMember?.id);
+        await bulkImportTasks(tasksToImport, currentMember?.id);
         if (previewProductGoal.trim()) {
           await updateProjectSettings({ productGoal: previewProductGoal.trim() });
         }
@@ -333,17 +261,21 @@ export default function BulkImportModal({ currentMember, onClose, onImported }: 
 
   const copyPrompt = () => {
     void navigator.clipboard.writeText(fullPrompt);
+    setPromptCopied(true);
+    window.setTimeout(() => setPromptCopied(false), 2000);
   };
 
   const goToPaste = () => {
     setError('');
-    if (!deadlinesValid) {
-      setError(
-        `Each sprint needs a deadline in Admin (Project settings). All ${sprintCount} sprint end dates must be set as YYYY-MM-DD before you continue.`,
-      );
-      return;
-    }
     setStep('paste');
+  };
+
+  const updatePreviewTask = (index: number, patch: Partial<BulkImportTaskDto>) => {
+    setPreviewTasks(prev => prev.map((t, i) => (i === index ? { ...t, ...patch } : t)));
+  };
+
+  const updatePreviewGoal = (index: number, patch: Partial<BulkImportSprintGoalDto>) => {
+    setPreviewGoals(prev => prev.map((g, i) => (i === index ? { ...g, ...patch } : g)));
   };
 
   return (
@@ -378,109 +310,31 @@ export default function BulkImportModal({ currentMember, onClose, onImported }: 
 
           {step === 'prompt' && (
             <div>
-              <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 12 }}>
-                Sprint count and end dates come from <strong>Admin → project settings</strong> (not editable here). Add
-                your rubric or project description, then copy the prompt for your AI. The response must be one JSON
-                object with <code>sprintGoals</code> and <code>tasks</code>.
-              </p>
-
               {!settingsLoaded ? (
-                <p className="text-muted text-sm">Loading sprint settings…</p>
+                <p className="text-muted text-sm">Loading project settings…</p>
               ) : settingsLoadError ? (
                 <div className="form-error mb-3">{settingsLoadError}</div>
               ) : (
-                <div
-                  className="bulk-import-admin-summary panel"
-                  style={{ marginBottom: 16, padding: '12px 14px', fontSize: 13 }}
-                >
-                  <div style={{ fontWeight: 600, marginBottom: 8 }}>Sprint plan (from admin)</div>
-                  <ul style={{ margin: 0, paddingLeft: 18, lineHeight: 1.5 }}>
-                    {Array.from({ length: sprintCount }, (_, i) => (
-                      <li key={i}>
-                        Sprint {i + 1}
-                        {deadlines[i] && DATE_RE.test(deadlines[i]) ? (
-                          <> — ends <code>{deadlines[i]}</code></>
-                        ) : (
-                          <span className="text-danger"> — deadline missing or invalid (set in Admin)</span>
-                        )}
-                      </li>
-                    ))}
-                  </ul>
-                  {!deadlinesValid ? (
-                    <p className="form-error mt-2 mb-0" style={{ fontSize: 12 }}>
-                      Ask your admin to set every sprint end date (YYYY-MM-DD) before you can continue to paste AI
-                      output.
-                    </p>
-                  ) : null}
-                </div>
+                <>
+                  <p className="text-sm text-muted mb-3">
+                    Copy the prompt below, paste it into your AI tool, and <strong>attach</strong> your rubric, project
+                    description, and any other files. When the model returns JSON, continue to <strong>Paste AI output</strong>.
+                  </p>
+                  {error && <div className="form-error mb-3">{error}</div>}
+                  <div className="flex gap-2 flex-wrap mb-3">
+                    <button type="button" className="btn btn-primary btn-sm" onClick={copyPrompt}>
+                      {promptCopied ? 'Copied!' : 'Copy prompt'}
+                    </button>
+                  </div>
+                  <p className="text-xs text-muted mb-2">Prompt text ({sprintCount} sprints in this project):</p>
+                  <pre className="bulk-import-prompt-pre">{fullPrompt}</pre>
+                </>
               )}
-
-              <div className="form-row">
-                <label>Project / rubric (included in the prompt)</label>
-                <textarea
-                  rows={5}
-                  value={rubric}
-                  onChange={e => setRubric(e.target.value)}
-                  placeholder="Paste course requirements, rubric, or project description…"
-                />
-              </div>
-
-              {error && <div className="form-error">{error}</div>}
-
-              <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 8 }}>
-                Full prompt (updates as you edit above):
-              </p>
-              <div
-                style={{
-                  background: 'var(--bg)',
-                  border: '1px solid var(--border-dark)',
-                  borderRadius: 8,
-                  padding: 12,
-                  fontFamily: 'monospace',
-                  fontSize: 11,
-                  whiteSpace: 'pre-wrap',
-                  maxHeight: 200,
-                  overflowY: 'auto',
-                  marginBottom: 12,
-                }}
-              >
-                {fullPrompt}
-              </div>
-              <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
-                <button type="button" className="btn btn-secondary btn-sm" onClick={copyPrompt}>
-                  Copy prompt
-                </button>
-              </div>
-              <div className="divider" />
-              <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 8 }}>
-                Example AI output shape:
-              </p>
-              <div
-                style={{
-                  background: 'var(--bg)',
-                  border: '1px solid var(--border-dark)',
-                  borderRadius: 8,
-                  padding: 12,
-                  fontFamily: 'monospace',
-                  fontSize: 11,
-                  whiteSpace: 'pre-wrap',
-                  maxHeight: 220,
-                  overflowY: 'auto',
-                }}
-              >
-                {SAMPLE_OUTPUT}
-              </div>
             </div>
           )}
 
           {step === 'paste' && (
             <div>
-              {!deadlinesValid ? (
-                <div className="form-error mb-3" style={{ fontSize: 13 }}>
-                  Sprint deadlines are incomplete in Admin. Fix them before importing, or the prompt and JSON dates will
-                  not match your project.
-                </div>
-              ) : null}
               <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 12 }}>
                 Paste the AI&apos;s JSON below. Use the object with <code>sprintGoals</code> and <code>tasks</code>, or
                 a plain array of tasks only (legacy).
@@ -503,93 +357,123 @@ export default function BulkImportModal({ currentMember, onClose, onImported }: 
                   <strong>Parse &amp; preview</strong>.
                 </p>
               ) : null}
-              <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 12 }}>
-                {previewGoals.length > 0 && (
-                  <>
-                    {previewGoals.length} sprint goal{previewGoals.length !== 1 ? 's' : ''} and{' '}
-                  </>
-                )}
+              <p className="text-sm text-muted mb-3">
+                Edit anything below before importing.{' '}
+                {previewGoals.length > 0 ? `${previewGoals.length} sprint goals and ` : ''}
                 {previewTasks.length} task{previewTasks.length !== 1 ? 's' : ''} will be saved.
-                {previewProductGoal && ' Product goal will be updated.'}
               </p>
 
-              {previewProductGoal && (
-                <div style={{ marginBottom: 16 }}>
-                  <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 8 }}>Product goal</div>
-                  <div
-                    style={{
-                      padding: '10px 12px',
-                      border: '1px solid var(--border)',
-                      borderRadius: 8,
-                      background: 'var(--bg)',
-                      fontSize: 13,
-                      lineHeight: 1.45,
-                    }}
-                  >
-                    {previewProductGoal}
+              <div className="form-row">
+                <label>Product goal</label>
+                <textarea
+                  rows={2}
+                  value={previewProductGoal}
+                  onChange={e => setPreviewProductGoal(e.target.value)}
+                  placeholder="Optional product goal"
+                />
+              </div>
+
+              {previewGoals.length > 0 && (
+                <div className="mb-3">
+                  <div className="text-sm font-semibold mb-2">Sprint goals</div>
+                  <div className="bulk-import-edit-goals">
+                    {previewGoals.map((g, i) => (
+                      <div key={i} className="bulk-import-edit-goal card">
+                        <label className="text-xs text-muted">Sprint {g.sprintNumber}</label>
+                        <input
+                          type="text"
+                          value={g.goal}
+                          onChange={e => updatePreviewGoal(i, { goal: e.target.value })}
+                          placeholder="Goal"
+                        />
+                        <input
+                          type="date"
+                          value={g.sprintDueDate ?? ''}
+                          onChange={e => updatePreviewGoal(i, { sprintDueDate: e.target.value || undefined })}
+                        />
+                      </div>
+                    ))}
                   </div>
                 </div>
               )}
 
-              {previewGoals.length > 0 && (
-                <div style={{ marginBottom: 16 }}>
-                  <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 8 }}>Sprint goals</div>
-                  <ul style={{ listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 8 }}>
-                    {previewGoals.map((g, i) => (
-                      <li
-                        key={i}
-                        style={{
-                          padding: '8px 10px',
-                          border: '1px solid var(--border)',
-                          borderRadius: 8,
-                          background: 'var(--bg)',
-                          fontSize: 13,
-                        }}
-                      >
-                        <strong>Sprint {g.sprintNumber}</strong>
-                        {g.sprintDueDate && <span className="text-muted"> · due {g.sprintDueDate}</span>}
-                        <div className="text-muted" style={{ marginTop: 4 }}>
-                          {g.goal || '(empty goal)'}
-                        </div>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-
-              <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 8 }}>Tasks</div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 280, overflowY: 'auto' }}>
+              <div className="text-sm font-semibold mb-2">Tasks</div>
+              <div className="bulk-import-edit-tasks">
                 {previewTasks.map((t, i) => (
-                  <div
-                    key={i}
-                    style={{
-                      padding: '10px 12px',
-                      border: '1px solid var(--border)',
-                      borderRadius: 8,
-                      background: 'var(--bg)',
-                    }}
-                  >
-                    <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 2, flexWrap: 'wrap' }}>
-                      <strong style={{ fontSize: 13 }}>{t.name}</strong>
-                      {t.sprintNumber != null && (
-                        <span className="badge badge-required">Sprint {t.sprintNumber}</span>
-                      )}
-                      <span className={`badge badge-${t.priority?.toLowerCase()}`}>{t.priority}</span>
-                      {t.isRequired ? (
-                        <span className="badge badge-required">Required</span>
-                      ) : (
-                        <span className="badge badge-optional">Optional</span>
-                      )}
+                  <div key={i} className="bulk-import-edit-task card">
+                    <input
+                      className="bulk-import-edit-task-name"
+                      value={t.name}
+                      onChange={e => updatePreviewTask(i, { name: e.target.value })}
+                      placeholder="Task name"
+                    />
+                    <textarea
+                      rows={2}
+                      value={t.notes ?? ''}
+                      onChange={e => updatePreviewTask(i, { notes: e.target.value || undefined })}
+                      placeholder="Notes"
+                    />
+                    <div className="bulk-import-edit-task-row">
+                      <label className="text-xs text-muted">
+                        Sprint #
+                        <input
+                          type="number"
+                          min={1}
+                          value={t.sprintNumber ?? ''}
+                          onChange={e =>
+                            updatePreviewTask(i, {
+                              sprintNumber: e.target.value ? Number(e.target.value) : undefined,
+                            })
+                          }
+                        />
+                      </label>
+                      <label className="text-xs text-muted">
+                        Due
+                        <input
+                          type="date"
+                          value={t.deadline ?? ''}
+                          onChange={e => updatePreviewTask(i, { deadline: e.target.value || undefined })}
+                        />
+                      </label>
+                      <label className="text-xs text-muted">
+                        Priority
+                        <select
+                          value={t.priority}
+                          onChange={e => updatePreviewTask(i, { priority: e.target.value as TaskPriority })}
+                        >
+                          <option value="High">High</option>
+                          <option value="Medium">Medium</option>
+                          <option value="Low">Low</option>
+                        </select>
+                      </label>
+                      <label className="text-xs text-muted flex gap-1 items-center">
+                        <input
+                          type="checkbox"
+                          checked={t.isRequired}
+                          onChange={e => updatePreviewTask(i, { isRequired: e.target.checked })}
+                        />
+                        Required
+                      </label>
                     </div>
-                    {(t.notes || t.description) && (
-                      <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{t.notes ?? t.description}</div>
-                    )}
-                    <div style={{ display: 'flex', gap: 12, fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>
-                      {t.estimatedTime && <span>Est: {t.estimatedTime}</span>}
-                      {t.deadline && <span>Due: {t.deadline}</span>}
-                      {t.category && <span>{t.category}</span>}
-                      {t.subtaskNames && t.subtaskNames.length > 0 && <span>{t.subtaskNames.length} subtasks</span>}
-                    </div>
+                    <input
+                      type="text"
+                      value={t.estimatedTime ?? ''}
+                      onChange={e => updatePreviewTask(i, { estimatedTime: e.target.value || undefined })}
+                      placeholder="Estimated time"
+                    />
+                    <input
+                      type="text"
+                      value={(t.subtaskNames ?? []).join(', ')}
+                      onChange={e =>
+                        updatePreviewTask(i, {
+                          subtaskNames: e.target.value
+                            .split(',')
+                            .map(s => s.trim())
+                            .filter(Boolean),
+                        })
+                      }
+                      placeholder="Subtasks (comma-separated)"
+                    />
                   </div>
                 ))}
               </div>
@@ -606,7 +490,7 @@ export default function BulkImportModal({ currentMember, onClose, onImported }: 
             <button
               type="button"
               className="btn btn-primary"
-              disabled={!settingsLoaded || !!settingsLoadError || !deadlinesValid}
+              disabled={!settingsLoaded || !!settingsLoadError}
               onClick={goToPaste}
             >
               Next: paste AI output

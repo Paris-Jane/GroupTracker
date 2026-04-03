@@ -135,12 +135,6 @@ export default function SchedulePage({ currentMember, members }: Props) {
   return (
     <div className="page schedule-page-full">
       <header className="page-title-block schedule-page-header">
-        <p className="text-muted text-sm schedule-page-hint">
-          Week of <strong>April 6–10, 2026</strong> (Mon–Fri). Click a day column to add a time block.
-        </p>
-        <button type="button" className="btn btn-primary btn-sm" onClick={() => openNew()}>
-          Add block
-        </button>
       </header>
 
       <section className="panel schedule-calendar-panel">

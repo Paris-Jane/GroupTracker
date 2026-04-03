@@ -112,6 +112,8 @@ const SORT_LABELS: Record<TasksSortKey, string> = {
 export interface TaskFiltersProps {
   search: string;
   onSearchChange: (v: string) => void;
+  /** Shown between the search bar and the filters button (e.g. New task, Bulk add). */
+  toolbarActions?: ReactNode;
   filtersOpen: boolean;
   onToggleFilters: () => void;
   filterStatus: TaskStatus | '';
@@ -141,6 +143,7 @@ export interface TaskFiltersProps {
 export function TaskFilters({
   search,
   onSearchChange,
+  toolbarActions,
   filtersOpen,
   onToggleFilters,
   filterStatus,
@@ -195,24 +198,8 @@ export function TaskFilters({
               </button>
             ) : null}
           </div>
+          {toolbarActions ? <div className="tasks-filter-toolbar-mid">{toolbarActions}</div> : null}
           <div className="tasks-filter-toolbar-actions">
-            <div className="tasks-filter-sort tasks-filter-sort--inline">
-              <label className="tasks-filter-sort-label" htmlFor="tasks-sort">
-                Sort
-              </label>
-              <select
-                id="tasks-sort"
-                className="tasks-filter-sort-select"
-                value={sortKey}
-                onChange={e => onSortKey(e.target.value as TasksSortKey)}
-              >
-                {(Object.keys(SORT_LABELS) as TasksSortKey[]).map(k => (
-                  <option key={k} value={k}>
-                    {SORT_LABELS[k]}
-                  </option>
-                ))}
-              </select>
-            </div>
             <button
               type="button"
               className={`tasks-filter-icon-btn${filterBtnOn ? ' tasks-filter-icon-btn--on' : ''}`}
@@ -240,6 +227,24 @@ export function TaskFilters({
         {filtersOpen ? (
           <div className="tasks-filter-row-secondary">
             <div className="tasks-filter-groups">
+              <div className="tasks-filter-group tasks-filter-group--sort">
+                <label className="tasks-filter-group-label" htmlFor="tasks-sort">
+                  Sort
+                </label>
+                <select
+                  id="tasks-sort"
+                  className="select-compact tasks-filter-sort-select"
+                  value={sortKey}
+                  onChange={e => onSortKey(e.target.value as TasksSortKey)}
+                  aria-label="Sort tasks"
+                >
+                  {(Object.keys(SORT_LABELS) as TasksSortKey[]).map(k => (
+                    <option key={k} value={k}>
+                      {SORT_LABELS[k]}
+                    </option>
+                  ))}
+                </select>
+              </div>
               <div className="tasks-filter-group">
                 <span className="tasks-filter-group-label">Status</span>
                 <div className="tasks-filter-pill-row">

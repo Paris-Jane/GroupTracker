@@ -9,11 +9,10 @@ import TasksPage from './pages/TasksPage';
 import ScrumPage from './pages/ScrumPage';
 import ResourcesPage from './pages/ResourcesPage';
 import SchedulePage from './pages/SchedulePage';
-import AdminPage from './pages/AdminPage';
 import UserAvatar from './components/common/UserAvatar';
 import SupabaseConfigMissing from './components/SupabaseConfigMissing';
 import { isSupabaseConfigured } from './lib/supabaseConfig';
-import { isAdminUser } from './lib/admin';
+import { filterVisibleMembers } from './lib/teamMembers';
 import './index.css';
 
 function navClass({ isActive }: { isActive: boolean }) {
@@ -26,7 +25,7 @@ export default function App() {
 
   useEffect(() => {
     if (!isSupabaseConfigured || !user) return;
-    getMembers().then(setMembers);
+    getMembers().then(all => setMembers(filterVisibleMembers(all)));
   }, [user]);
 
   if (import.meta.env.PROD && !isSupabaseConfigured) {
@@ -65,30 +64,6 @@ export default function App() {
           <NavLink to="/schedule" className={navClass}>
             Schedule
           </NavLink>
-          {isAdminUser(user) ? (
-            <NavLink
-              to="/admin"
-              className={({ isActive }) => `${navClass({ isActive })} app-nav-link--icon-only`}
-              title="Administration"
-            >
-              <svg
-                className="app-nav-admin-gear"
-                width={18}
-                height={18}
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                aria-hidden
-              >
-                <circle cx="12" cy="12" r="3" />
-                <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" />
-              </svg>
-              <span className="visually-hidden">Administration</span>
-            </NavLink>
-          ) : null}
         </nav>
         <div className="app-user">
           <UserAvatar member={user} size="sm" />
@@ -105,7 +80,6 @@ export default function App() {
           <Route path="/scrum" element={<ScrumPage currentMember={user} members={members} />} />
           <Route path="/resources" element={<ResourcesPage currentMember={user} members={members} />} />
           <Route path="/schedule" element={<SchedulePage currentMember={user} members={members} />} />
-          <Route path="/admin" element={<AdminPage />} />
         </Routes>
       </main>
     </div>

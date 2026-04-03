@@ -31,6 +31,8 @@ import UserAvatar from '../components/common/UserAvatar';
 import Avatar from '../components/common/Avatar';
 import TaskFormModal from '../components/Tasks/TaskFormModal';
 import ConfirmDialog from '../components/common/ConfirmDialog';
+import PickTasksModal from '../components/games/PickTasksModal';
+import PlanningPokerModal from '../components/games/PlanningPokerModal';
 import { memberChipColor } from '../components/Tasks/TaskFilters';
 
 interface Props {
@@ -204,6 +206,8 @@ export default function ScrumPage({ currentMember, members }: Props) {
   const [planManualOpen, setPlanManualOpen] = useState(false);
   const [manualGoalDrafts, setManualGoalDrafts] = useState<Record<number, string>>({});
   const [savingManualGoals, setSavingManualGoals] = useState(false);
+  const [showPick, setShowPick] = useState(false);
+  const [showPoker, setShowPoker] = useState(false);
 
   const [detailsModalOpen, setDetailsModalOpen] = useState(false);
   const [productGoalDraft, setProductGoalDraft] = useState('');
@@ -495,9 +499,17 @@ export default function ScrumPage({ currentMember, members }: Props) {
         <div className="sprint-board-shell">
           <div className="sprint-board-toolbar">
             <h2 className="sprint-board-toolbar-title">Sprint board</h2>
-            <button type="button" className="btn btn-secondary btn-sm" onClick={() => setPlanChoiceOpen(true)}>
-              Plan sprints
-            </button>
+            <div className="sprint-board-toolbar-actions">
+              <button type="button" className="btn btn-ghost btn-sm" onClick={() => setShowPick(true)}>
+                Pick
+              </button>
+              <button type="button" className="btn btn-ghost btn-sm" onClick={() => setShowPoker(true)}>
+                Poker
+              </button>
+              <button type="button" className="btn btn-secondary btn-sm" onClick={() => setPlanChoiceOpen(true)}>
+                Plan sprints
+              </button>
+            </div>
           </div>
         <div className="sprint-kanban-v3">
           {(
@@ -550,10 +562,12 @@ export default function ScrumPage({ currentMember, members }: Props) {
 
       {/* Section 3: Retrospective */}
       <section className="sprint-zone sprint-zone--review" aria-label="Sprint retrospective">
-        <div className="sprint-retro-card">
-          <h2 className="sprint-zone-title sprint-retro-card-title">Sprint retrospective</h2>
-          <div className="sprint-retro-two-col">
-            <div className="sprint-retro-column">
+        <div className="sprint-retro-section">
+          <div className="sprint-board-toolbar sprint-retro-toolbar">
+            <h2 className="sprint-board-toolbar-title">Sprint retrospective</h2>
+          </div>
+          <div className="sprint-retro-two-col sprint-retro-two-col--boxed">
+            <div className="sprint-retro-box sprint-retro-column">
               <div className="sprint-retro-column-head">
                 <h3 className="sprint-retro-column-title">What went well</h3>
                 <button
@@ -638,7 +652,7 @@ export default function ScrumPage({ currentMember, members }: Props) {
                   })}
               </ul>
             </div>
-            <div className="sprint-retro-column">
+            <div className="sprint-retro-box sprint-retro-column">
               <div className="sprint-retro-column-head">
                 <h3 className="sprint-retro-column-title">What can we improve on</h3>
                 <button
@@ -726,6 +740,23 @@ export default function ScrumPage({ currentMember, members }: Props) {
           </div>
         </div>
       </section>
+
+      <PickTasksModal
+        open={showPick}
+        onClose={() => setShowPick(false)}
+        tasks={tasks}
+        members={members}
+        currentMemberId={currentMember?.id ?? null}
+        onTasksChanged={loadTasks}
+      />
+      <PlanningPokerModal
+        open={showPoker}
+        onClose={() => setShowPoker(false)}
+        tasks={tasks}
+        members={members}
+        currentMemberId={currentMember?.id ?? null}
+        onTasksChanged={loadTasks}
+      />
 
       {planChoiceOpen && (
         <div className="modal-overlay">
