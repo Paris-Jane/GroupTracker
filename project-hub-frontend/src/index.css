@@ -2482,18 +2482,16 @@ tr:hover td { background: var(--surface-hover); }
   padding-top: 18px;
   border-top: 1px solid var(--border);
   display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 20px 24px;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 16px;
 }
 
 .tasks-filter-groups {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-  align-items: end;
-  gap: 18px 22px;
-  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  width: 100%;
   min-width: 0;
 }
 
@@ -2504,12 +2502,20 @@ tr:hover td { background: var(--surface-hover); }
   min-width: 0;
 }
 
-.tasks-filter-group--assignees {
-  grid-column: 1 / -1;
+.tasks-filter-group--assignees .tasks-filter-assignee-row {
+  padding: 6px 0 2px;
 }
 
-.tasks-filter-group--sort {
-  grid-column: span 1;
+.tasks-filter-group--two-col {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px 20px;
+}
+
+@media (max-width: 560px) {
+  .tasks-filter-group--two-col {
+    grid-template-columns: 1fr;
+  }
 }
 
 .tasks-filter-group-label {
@@ -2738,6 +2744,35 @@ tr:hover td { background: var(--surface-hover); }
 .tasks-filter-sort-select:focus {
   outline: none;
   text-decoration: underline;
+}
+
+.tasks-filter-sort-select--block {
+  display: block;
+  width: 100%;
+  max-width: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  padding: 8px 28px 8px 10px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+}
+
+.tasks-filter-sprint-select--block {
+  width: 100%;
+  max-width: none;
+}
+
+.tasks-filter-meta--panel {
+  width: 100%;
+  padding-top: 4px;
+  border-top: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
+  justify-content: flex-start;
+}
+
+.tasks-filter-meta--panel .tasks-filter-result-summary {
+  text-align: left;
 }
 
 .tasks-empty-panel {

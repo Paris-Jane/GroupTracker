@@ -1,6 +1,6 @@
 import type { CSSProperties } from 'react';
 import type { GroupMember } from '../../types';
-import { isAdminUser } from '../../lib/admin';
+import { assignableMembers } from '../../lib/admin';
 import { memberChipColor } from '../Tasks/TaskFilters';
 
 interface AssigneePickerTableProps {
@@ -12,10 +12,10 @@ interface AssigneePickerTableProps {
 }
 
 export default function AssigneePickerTable({ members, selectedIds, onToggle, disabled }: AssigneePickerTableProps) {
+  const team = assignableMembers(members);
   return (
     <div className="task-assign-picker-table" role="list">
-      {members.map(m => {
-        const admin = isAdminUser(m);
+      {team.map(m => {
         const on = selectedIds.includes(m.id);
         const c = memberChipColor(m);
         const initial = (m.avatarInitial ?? m.name.charAt(0) ?? '?').toUpperCase();
@@ -30,23 +30,12 @@ export default function AssigneePickerTable({ members, selectedIds, onToggle, di
             onClick={() => onToggle(m.id)}
           >
             <span className="task-assign-picker-cell task-assign-picker-cell--icon">
-              {admin ? (
-                <span className="task-assign-picker-icon-muted" aria-hidden>
-                  —
-                </span>
-              ) : (
-                <span
-                  className="task-assign-picker-icon-circle"
-                  style={{ '--assign-icon-bg': c } as CSSProperties}
-                >
-                  {initial}
-                </span>
-              )}
+              <span className="task-assign-picker-icon-circle" style={{ '--assign-icon-bg': c } as CSSProperties}>
+                {initial}
+              </span>
             </span>
             <span className="task-assign-picker-cell task-assign-picker-cell--name">{m.name}</span>
-            <span className="task-assign-picker-cell task-assign-picker-cell--role text-muted text-xs">
-              {admin ? 'Admin' : 'Member'}
-            </span>
+            <span className="task-assign-picker-cell task-assign-picker-cell--role text-muted text-xs">Member</span>
           </button>
         );
       })}

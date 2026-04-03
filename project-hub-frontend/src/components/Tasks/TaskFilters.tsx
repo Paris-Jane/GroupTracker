@@ -1,6 +1,7 @@
 import type { CSSProperties, ReactNode } from 'react';
 import type { GroupMember, TaskPriority, TaskStatus } from '../../types';
 import { resolveMemberColor } from '../../lib/memberColor';
+import { assignableMembers } from '../../lib/admin';
 
 export type TasksSortKey = 'deadline' | 'priority' | 'name' | 'updated';
 
@@ -170,6 +171,7 @@ export function TaskFilters({
   onChangeVisibleColumns,
 }: TaskFiltersProps) {
   const filterBtnOn = filtersOpen || !!activeSummary;
+  const assigneeFilterMembers = assignableMembers(members);
 
   return (
     <div className="tasks-filter-sticky">
@@ -227,72 +229,100 @@ export function TaskFilters({
         {filtersOpen ? (
           <div className="tasks-filter-row-secondary">
             <div className="tasks-filter-groups">
-              <div className="tasks-filter-group tasks-filter-group--sort">
-                <label className="tasks-filter-group-label" htmlFor="tasks-sort">
-                  Sort
-                </label>
-                <select
-                  id="tasks-sort"
-                  className="select-compact tasks-filter-sort-select"
-                  value={sortKey}
-                  onChange={e => onSortKey(e.target.value as TasksSortKey)}
-                  aria-label="Sort tasks"
-                >
-                  {(Object.keys(SORT_LABELS) as TasksSortKey[]).map(k => (
-                    <option key={k} value={k}>
-                      {SORT_LABELS[k]}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="tasks-filter-group">
-                <span className="tasks-filter-group-label">Status</span>
-                <div className="tasks-filter-pill-row">
-                  {STATUS_OPTIONS.map(({ value, label }) => (
-                    <FilterPill
-                      key={value || 'all'}
-                      selected={filterStatus === value}
-                      onClick={() => onFilterStatus(value)}
-                    >
-                      {label}
-                    </FilterPill>
-                  ))}
+              <div className="tasks-filter-group--two-col">
+                <div className="tasks-filter-group tasks-filter-group--sort">
+                  <label className="tasks-filter-group-label" htmlFor="tasks-sort">
+                    Sort
+                  </label>
+                  <select
+                    id="tasks-sort"
+                    className="select-compact tasks-filter-sort-select tasks-filter-sort-select--block"
+                    value={sortKey}
+                    onChange={e => onSortKey(e.target.value as TasksSortKey)}
+                    aria-label="Sort tasks"
+                  >
+                    {(Object.keys(SORT_LABELS) as TasksSortKey[]).map(k => (
+                      <option key={k} value={k}>
+                        {SORT_LABELS[k]}
+                      </option>
+                    ))}
+                  </select>
                 </div>
-              </div>
-
-              <div className="tasks-filter-group">
-                <span className="tasks-filter-group-label">Sprint</span>
-                {useSprintDropdown ? (
-                  <div className="tasks-filter-sprint-dropdown-wrap">
-                    {filterSprint !== '' ? (
-                      <span className="tasks-filter-sprint-chip">Sprint {filterSprint}</span>
-                    ) : null}
-                    <select
-                      className="select-compact tasks-filter-sprint-select"
-                      value={filterSprint === '' ? '' : String(filterSprint)}
-                      onChange={e => onFilterSprint(e.target.value === '' ? '' : Number(e.target.value))}
-                      aria-label="Filter by sprint"
-                    >
-                      <option value="">All sprints</option>
-                      {sprintNumbers.map(n => (
-                        <option key={n} value={n}>
-                          Sprint {n}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                ) : (
+                <div className="tasks-filter-group">
+                  <span className="tasks-filter-group-label">Status</span>
                   <div className="tasks-filter-pill-row">
-                    <FilterPill selected={filterSprint === ''} onClick={() => onFilterSprint('')}>
-                      All
-                    </FilterPill>
-                    {sprintNumbers.map(n => (
-                      <FilterPill key={n} selected={filterSprint === n} onClick={() => onFilterSprint(n)}>
-                        Sprint {n}
+                    {STATUS_OPTIONS.map(({ value, label }) => (
+                      <FilterPill
+                        key={value || 'all'}
+                        selected={filterStatus === value}
+                        onClick={() => onFilterStatus(value)}
+                      >
+                        {label}
                       </FilterPill>
                     ))}
                   </div>
-                )}
+                </div>
+              </div>
+
+              <div className="tasks-filter-group--two-col">
+                <div className="tasks-filter-group">
+                  <span className="tasks-filter-group-label">Sprint</span>
+                  {useSprintDropdown ? (
+                    <div className="tasks-filter-sprint-dropdown-wrap">
+                      {filterSprint !== '' ? (
+                        <span className="tasks-filter-sprint-chip">Sprint {filterSprint}</span>
+                      ) : null}
+                      <select
+                        className="select-compact tasks-filter-sprint-select tasks-filter-sprint-select--block"
+                        value={filterSprint === '' ? '' : String(filterSprint)}
+                        onChange={e => onFilterSprint(e.target.value === '' ? '' : Number(e.target.value))}
+                        aria-label="Filter by sprint"
+                      >
+                        <option value="">All sprints</option>
+                        {sprintNumbers.map(n => (
+                          <option key={n} value={n}>
+                            Sprint {n}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  ) : (
+                    <div className="tasks-filter-pill-row">
+                      <FilterPill selected={filterSprint === ''} onClick={() => onFilterSprint('')}>
+                        All
+                      </FilterPill>
+                      {sprintNumbers.map(n => (
+                        <FilterPill key={n} selected={filterSprint === n} onClick={() => onFilterSprint(n)}>
+                          Sprint {n}
+                        </FilterPill>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <div className="tasks-filter-group">
+                  <span className="tasks-filter-group-label">Priority</span>
+                  <div className="tasks-filter-pill-row">
+                    <FilterPill selected={filterPriority === ''} onClick={() => onFilterPriority('')}>
+                      All
+                    </FilterPill>
+                    {PRIORITIES.map(p => (
+                      <FilterPill
+                        key={p}
+                        selected={filterPriority === p}
+                        onClick={() => onFilterPriority(p)}
+                        className={
+                          p === 'High'
+                            ? 'tasks-filter-pill--pri-high'
+                            : p === 'Medium'
+                              ? 'tasks-filter-pill--pri-medium'
+                              : 'tasks-filter-pill--pri-low'
+                        }
+                      >
+                        {p}
+                      </FilterPill>
+                    ))}
+                  </div>
+                </div>
               </div>
 
               <div className="tasks-filter-group tasks-filter-group--assignees">
@@ -307,38 +337,13 @@ export function TaskFilters({
                   >
                     <span className="tasks-filter-member-chip-inner">All</span>
                   </button>
-                  {members.map(m => (
+                  {assigneeFilterMembers.map(m => (
                     <MemberAvatarChip
                       key={m.id}
                       member={m}
                       selected={filterAssigneeIds.includes(m.id)}
                       onClick={() => onToggleAssignee(m.id)}
                     />
-                  ))}
-                </div>
-              </div>
-
-              <div className="tasks-filter-group">
-                <span className="tasks-filter-group-label">Priority</span>
-                <div className="tasks-filter-pill-row">
-                  <FilterPill selected={filterPriority === ''} onClick={() => onFilterPriority('')}>
-                    All
-                  </FilterPill>
-                  {PRIORITIES.map(p => (
-                    <FilterPill
-                      key={p}
-                      selected={filterPriority === p}
-                      onClick={() => onFilterPriority(p)}
-                      className={
-                        p === 'High'
-                          ? 'tasks-filter-pill--pri-high'
-                          : p === 'Medium'
-                            ? 'tasks-filter-pill--pri-medium'
-                            : 'tasks-filter-pill--pri-low'
-                      }
-                    >
-                      {p}
-                    </FilterPill>
                   ))}
                 </div>
               </div>

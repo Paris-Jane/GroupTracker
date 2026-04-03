@@ -33,7 +33,7 @@ import TaskFormModal from '../components/Tasks/TaskFormModal';
 import ConfirmDialog from '../components/common/ConfirmDialog';
 import PickTasksModal from '../components/games/PickTasksModal';
 import PlanningPokerModal from '../components/games/PlanningPokerModal';
-import AssigneePickerTable from '../components/common/AssigneePickerTable';
+import AssigneeAvatarStrip from '../components/common/AssigneeAvatarStrip';
 import { isAdminUser } from '../lib/admin';
 
 interface Props {
@@ -162,13 +162,9 @@ function SprintBoardCard({
           </button>
         </div>
         {assignOpen && (
-          <div className="task-assign-popover task-assign-popover--table sprint-b-assign-popover" role="dialog" aria-label="Choose assignees">
+          <div className="task-assign-popover task-assign-popover--icons sprint-b-assign-popover" role="dialog" aria-label="Choose assignees">
             <p className="task-assign-popover-hint">Select people</p>
-            <AssigneePickerTable
-              members={members}
-              selectedIds={assignedIds}
-              onToggle={id => void toggleAssignee(id)}
-            />
+            <AssigneeAvatarStrip members={members} selectedIds={assignedIds} onToggle={id => void toggleAssignee(id)} />
           </div>
         )}
       </div>
@@ -558,10 +554,11 @@ export default function ScrumPage({ currentMember, members }: Props) {
       {/* Section 3: Retrospective */}
       <section className="sprint-zone sprint-zone--review" aria-label="Sprint retrospective">
         <div className="sprint-retro-section">
-          <div className="sprint-board-toolbar sprint-retro-toolbar">
+          {/* <div className="sprint-board-toolbar sprint-retro-toolbar">
             <h2 className="sprint-board-toolbar-title">Sprint retrospective</h2>
-          </div>
+          </div> */}
           <div className="sprint-retro-outer card">
+          <h2 className="sprint-board-toolbar-title">Sprint retrospective</h2>
             <div className="sprint-retro-two-col sprint-retro-two-col--boxed">
               <div className="sprint-retro-subbox sprint-retro-column">
               <div className="sprint-retro-column-head">

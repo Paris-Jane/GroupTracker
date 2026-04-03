@@ -12,7 +12,7 @@ import {
 } from '../api/client';
 import type { TaskItem, GroupMember, TaskStatus, TaskPriority, CreateTaskDto } from '../types';
 import Avatar from '../components/common/Avatar';
-import AssigneePickerTable from '../components/common/AssigneePickerTable';
+import AssigneeAvatarStrip from '../components/common/AssigneeAvatarStrip';
 import { isAdminUser } from '../lib/admin';
 import ConfirmDialog from '../components/common/ConfirmDialog';
 import BulkImportModal from '../components/Tasks/BulkImportModal';
@@ -283,13 +283,9 @@ function TaskRow({
               </button>
             )}
             {assignOpen && (
-              <div className="task-assign-popover task-assign-popover--table" role="dialog" aria-label="Choose assignees">
+              <div className="task-assign-popover task-assign-popover--icons" role="dialog" aria-label="Choose assignees">
                 <p className="task-assign-popover-hint">Select people</p>
-                <AssigneePickerTable
-                  members={members}
-                  selectedIds={assignedIds}
-                  onToggle={id => void toggleAssignee(id)}
-                />
+                <AssigneeAvatarStrip members={members} selectedIds={assignedIds} onToggle={id => void toggleAssignee(id)} />
               </div>
             )}
           </div>

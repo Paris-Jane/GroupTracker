@@ -1,4 +1,4 @@
--- Per-sprint, per-member pick (1–10 comfort) and poker (deck values), independent of shared sessions.
+-- Per-sprint, per-member pick (1–5 comfort) and poker (deck values), independent of shared sessions.
 
 create table if not exists public.sprint_pick_ratings (
   id bigint generated always as identity primary key,
@@ -26,5 +26,8 @@ create index if not exists sprint_poker_votes_sprint_idx on public.sprint_poker_
 alter table public.sprint_pick_ratings enable row level security;
 alter table public.sprint_poker_votes enable row level security;
 
+drop policy if exists "project_hub_rw_sprint_pick_ratings" on public.sprint_pick_ratings;
 create policy "project_hub_rw_sprint_pick_ratings" on public.sprint_pick_ratings for all using (true) with check (true);
+
+drop policy if exists "project_hub_rw_sprint_poker_votes" on public.sprint_poker_votes;
 create policy "project_hub_rw_sprint_poker_votes" on public.sprint_poker_votes for all using (true) with check (true);

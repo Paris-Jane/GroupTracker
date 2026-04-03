@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { TaskItem, GroupMember } from '../../types';
 import {
   fetchSprintPickRatingsForMember,
@@ -72,9 +72,11 @@ export default function PickTasksModal({
     () => [...sprintTasks].sort((a, b) => a.name.localeCompare(b.name)),
     [sprintTasks],
   );
-  const sprintTaskIdsKey = useMemo(() => sortedTasks.map(t => t.id).join(','), [sortedTasks]);
   const taskOrder = useMemo(() => sortedTasks.map(t => t.id), [sortedTasks]);
   const taskMap = useMemo(() => new Map(sprintTasks.map(t => [t.id, t])), [sprintTasks]);
+
+  const sortedTasksRef = useRef(sortedTasks);
+  sortedTasksRef.current = sortedTasks;
 
   useEffect(() => {
     if (!open) {
@@ -95,12 +97,21 @@ export default function PickTasksModal({
     fetchSprintPickRatingsForMember(sprintNumber, currentMemberId)
       .then(m => {
         if (cancelled) return;
+        const tasks = sortedTasksRef.current;
         const next: Record<number, number | ''> = {};
-        for (const t of sortedTasks) {
+        for (const t of tasks) {
           const v = m.get(t.id);
           next[t.id] = v ?? '';
         }
         setDraft(next);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          const tasks = sortedTasksRef.current;
+          const next: Record<number, number | ''> = {};
+          for (const t of tasks) next[t.id] = '';
+          setDraft(next);
+        }
       })
       .finally(() => {
         if (!cancelled) setDraftLoading(false);
@@ -108,7 +119,7 @@ export default function PickTasksModal({
     return () => {
       cancelled = true;
     };
-  }, [open, flow, sprintNumber, currentMemberId, sprintTaskIdsKey]);
+  }, [open, flow, sprintNumber, currentMemberId]);
 
   const loadResults = useCallback(async () => {
     setResultsLoading(true);
@@ -201,7 +212,6 @@ export default function PickTasksModal({
                       type="button"
                       className={`btn btn-secondary btn-sm sprint-poker-card${draft[t.id] === n ? ' btn-primary' : ''}`}
                       onClick={() => setDraft(d => ({ ...d, [t.id]: n }))}
-                      disabled={draftLoading}
                     >
                       {n}
                     </button>
@@ -210,7 +220,6 @@ export default function PickTasksModal({
                     type="button"
                     className="btn btn-ghost btn-sm"
                     onClick={() => setDraft(d => ({ ...d, [t.id]: '' }))}
-                    disabled={draftLoading}
                   >
                     Clear
                   </button>
@@ -220,7 +229,7 @@ export default function PickTasksModal({
           </ul>
           {saveError ? <div className="form-error mt-2">{saveError}</div> : null}
           <div className="mt-3">
-            <button type="button" className="btn btn-primary" disabled={draftLoading || saving} onClick={() => void saveRankings()}>
+            <button type="button" className="btn btn-primary" disabled={saving} onClick={() => void saveRankings()}>
               {saving ? 'Saving…' : 'Save rankings'}
             </button>
           </div>
