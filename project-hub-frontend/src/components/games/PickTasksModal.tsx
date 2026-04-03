@@ -8,7 +8,7 @@ import {
   assignTask,
 } from '../../api/client';
 import PickTaskCard from './pick/PickTaskCard';
-import { aggregatePickRows, type PickResultsRow } from './pick/pickResultsUtils';
+import { aggregatePickRows, sameSortedMemberIds, type PickResultsRow } from './pick/pickResultsUtils';
 
 type Flow = 'menu' | 'rank' | 'results';
 
@@ -46,8 +46,12 @@ export default function PickTasksModal({
   const [saveError, setSaveError] = useState('');
   const [resultsRows, setResultsRows] = useState<PickResultsRow[]>([]);
   const [resultsLoading, setResultsLoading] = useState(false);
-  const [assignOptimistic, setAssignOptimistic] = useState<Record<number, number[] | undefined>>({});
-  const [assignBusy, setAssignBusy] = useState<Record<number, boolean>>({});
+  /** Pending assignee picks per task; undefined key → use server `task.assignments`. */
+  const [assignDraft, setAssignDraft] = useState<Record<number, number[] | undefined>>({});
+  const [assignSavePending, setAssignSavePending] = useState<Record<number, boolean>>({});
+  const [assignError, setAssignError] = useState('');
+  const assignDraftRef = useRef(assignDraft);
+  assignDraftRef.current = assignDraft;
 
   const sortedTasks = useMemo(
     () => [...sprintTasks].sort((a, b) => a.name.localeCompare(b.name)),
@@ -84,11 +88,16 @@ export default function PickTasksModal({
       setResultsRows([]);
       setDraftLoading(false);
       setSaving(false);
-      setAssignOptimistic({});
-      setAssignBusy({});
+      setAssignDraft({});
+      setAssignSavePending({});
+      setAssignError('');
       return;
     }
   }, [open]);
+
+  useEffect(() => {
+    if (flow !== 'results') setAssignDraft({});
+  }, [flow]);
 
   useEffect(() => {
     if (!open || flow !== 'rank' || memberId == null) return;
@@ -142,58 +151,50 @@ export default function PickTasksModal({
     return () => clearInterval(t);
   }, [open, flow, loadResults]);
 
-  /** Drop optimistic assignees only once parent `sprintTasks` matches (avoids flash: promise resolves before React re-renders). */
-  useEffect(() => {
-    setAssignOptimistic(prev => {
-      const keys = Object.keys(prev);
-      if (keys.length === 0) return prev;
-      const map = new Map(sprintTasks.map(t => [t.id, t]));
-      const next = { ...prev };
-      let changed = false;
-      for (const key of keys) {
-        const taskId = Number(key);
-        const want = prev[taskId];
-        if (want === undefined) continue;
-        const task = map.get(taskId);
-        if (!task) continue;
-        const serverIds = task.assignments.map(a => a.groupMemberId).sort((a, b) => a - b);
-        const optimisticIds = [...want].sort((a, b) => a - b);
-        const match =
-          serverIds.length === optimisticIds.length &&
-          serverIds.every((id, i) => id === optimisticIds[i]);
-        if (match) {
-          delete next[taskId];
-          changed = true;
-        }
+  const toggleAssignSelection = useCallback((taskId: number, toggleMemberId: number) => {
+    setAssignError('');
+    setAssignDraft(prev => {
+      const task = taskMapRef.current.get(taskId);
+      const server = task?.assignments.map(a => Number(a.groupMemberId)) ?? [];
+      const base = prev[taskId] !== undefined ? prev[taskId]! : server;
+      const next = base.includes(toggleMemberId)
+        ? base.filter(id => id !== toggleMemberId)
+        : [...base, toggleMemberId];
+      if (sameSortedMemberIds(next, server)) {
+        if (prev[taskId] === undefined) return prev;
+        const { [taskId]: _, ...rest } = prev;
+        return rest;
       }
-      return changed ? next : prev;
+      return { ...prev, [taskId]: next };
     });
-  }, [sprintTasks]);
+  }, []);
 
-  const handlePickToggleAssign = useCallback(
-    async (taskId: number, toggleMemberId: number) => {
+  const discardAssignDraft = useCallback((taskId: number) => {
+    setAssignDraft(prev => {
+      const { [taskId]: _, ...rest } = prev;
+      return rest;
+    });
+  }, []);
+
+  const saveAssigneesForTask = useCallback(
+    async (taskId: number) => {
       if (memberId == null) return;
-      let nextSnapshot: number[] = [];
-      setAssignOptimistic(o => {
-        const task = taskMapRef.current.get(taskId);
-        const base = o[taskId] ?? task?.assignments.map(a => a.groupMemberId) ?? [];
-        nextSnapshot = base.includes(toggleMemberId)
-          ? base.filter(id => id !== toggleMemberId)
-          : [...base, toggleMemberId];
-        return { ...o, [taskId]: nextSnapshot };
-      });
-      setAssignBusy(b => ({ ...b, [taskId]: true }));
+      const draft = assignDraftRef.current[taskId];
+      if (draft === undefined) return;
+      setAssignSavePending(p => ({ ...p, [taskId]: true }));
+      setAssignError('');
       try {
-        await assignTask(taskId, nextSnapshot, memberId);
+        await assignTask(taskId, draft, memberId);
         await Promise.resolve(onTasksChanged?.());
-      } catch {
-        setAssignOptimistic(o => {
-          const { [taskId]: _, ...rest } = o;
+        setAssignDraft(prev => {
+          const { [taskId]: _, ...rest } = prev;
           return rest;
         });
+      } catch {
+        setAssignError('Could not save assignees. Check your connection and try again.');
       } finally {
-        setAssignBusy(b => {
-          const { [taskId]: _, ...rest } = b;
+        setAssignSavePending(p => {
+          const { [taskId]: _, ...rest } = p;
           return rest;
         });
       }
@@ -327,6 +328,7 @@ export default function PickTasksModal({
           Refresh
         </button>
       </div>
+      {assignError ? <div className="form-error mb-2">{assignError}</div> : null}
       {taskOrder.length === 0 ? (
         <p className="text-sm text-muted">No tasks in this sprint.</p>
       ) : resultsLoading && resultsRows.length === 0 ? (
@@ -337,18 +339,24 @@ export default function PickTasksModal({
             .filter(row => taskMap.has(row.taskId))
             .map(row => {
               const task = taskMap.get(row.taskId)!;
-              const assignedIds =
-                assignOptimistic[row.taskId] ?? task.assignments.map(a => a.groupMemberId);
+              const serverIds = task.assignments.map(a => Number(a.groupMemberId));
+              const draft = assignDraft[row.taskId];
+              const selectedIds = draft ?? serverIds;
+              const assignDirty = draft !== undefined && !sameSortedMemberIds(draft, serverIds);
               return (
                 <PickTaskCard
                   key={row.taskId}
                   row={row}
                   task={task}
                   members={members}
-                  assignedMemberIds={assignedIds}
+                  selectedMemberIds={selectedIds}
+                  serverMemberIds={serverIds}
+                  assignDirty={assignDirty}
                   currentMemberId={memberId}
-                  assigning={!!assignBusy[row.taskId]}
-                  onToggleAssign={mid => void handlePickToggleAssign(row.taskId, mid)}
+                  savePending={!!assignSavePending[row.taskId]}
+                  onToggleMember={mid => toggleAssignSelection(row.taskId, mid)}
+                  onSaveAssignees={() => void saveAssigneesForTask(row.taskId)}
+                  onDiscardAssignees={() => discardAssignDraft(row.taskId)}
                 />
               );
             })}

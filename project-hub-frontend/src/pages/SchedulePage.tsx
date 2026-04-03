@@ -55,6 +55,9 @@ function minutesToHHMM(totalMin: number) {
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
 }
 
+/** Min visual height (% of column) so title + meta always fit (~matches CSS min-height). */
+const MIN_BLOCK_HEIGHT_PCT = Math.max(8, (52 / TIMELINE_HEIGHT_PX) * 100);
+
 function blockLayout(it: ScheduleItem) {
   let start = parseTimeToMinutes(it.startTime);
   let end = parseTimeToMinutes(it.endTime);
@@ -65,8 +68,13 @@ function blockLayout(it: ScheduleItem) {
   const heightPct = ((end - start) / RANGE_MIN) * 100;
   return {
     top: `${topPct}%`,
-    height: `${Math.max(heightPct, 4)}%`,
+    height: `${Math.max(heightPct, MIN_BLOCK_HEIGHT_PCT)}%`,
   };
+}
+
+function displayScheduleTitle(title: string) {
+  const t = title.trim();
+  return t.length > 0 ? t : 'Untitled';
 }
 
 const HOUR_TICKS = Array.from({ length: 14 }, (_, i) => DAY_START_MIN + i * 60);
@@ -194,18 +202,21 @@ export default function SchedulePage({ currentMember, members }: Props) {
                     type="button"
                     className={`schedule-block-abs schedule-cat-${it.category.toLowerCase()}`}
                     style={blockLayout(it)}
+                    aria-label={`${displayScheduleTitle(it.title)}, ${it.startTime.slice(0, 5)} to ${it.endTime.slice(0, 5)}`}
                     onClick={ev => {
                       ev.stopPropagation();
                       setEditing(it);
                     }}
                   >
-                    <div className="schedule-block-abs-time">
-                      {it.startTime.slice(0, 5)} – {it.endTime.slice(0, 5)}
+                    <div className="schedule-block-abs-title">{displayScheduleTitle(it.title)}</div>
+                    <div className="schedule-block-abs-meta">
+                      <span className="schedule-block-abs-time">
+                        {it.startTime.slice(0, 5)} – {it.endTime.slice(0, 5)}
+                      </span>
+                      {it.ownerMemberId != null && (
+                        <span className="schedule-block-abs-owner">{memberName(it.ownerMemberId)}</span>
+                      )}
                     </div>
-                    <div className="schedule-block-abs-title">{it.title}</div>
-                    {it.ownerMemberId != null && (
-                      <div className="schedule-block-abs-owner">{memberName(it.ownerMemberId)}</div>
-                    )}
                   </button>
                 ))}
               </div>

@@ -64,6 +64,14 @@ export function formatAssignedFooter(names: string[]): string {
   return `Assigned to ${head}, and ${tail}`;
 }
 
+/** Compare assignee id lists (order-independent, coerces to number). */
+export function sameSortedMemberIds(a: number[], b: number[]): boolean {
+  const na = [...a].map(Number).sort((x, y) => x - y);
+  const nb = [...b].map(Number).sort((x, y) => x - y);
+  if (na.length !== nb.length) return false;
+  return na.every((id, i) => id === nb[i]);
+}
+
 export function pickMemberRecord(members: GroupMember[], memberId: number, fallbackName: string): GroupMember {
   const m = members.find(x => x.id === memberId);
   if (m) return m;

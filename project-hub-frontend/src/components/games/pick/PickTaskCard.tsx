@@ -5,6 +5,7 @@ import {
   formatAssignedFooter,
   formatBestFitSummary,
   pickMemberRecord,
+  sameSortedMemberIds,
   sortPickMembersForDisplay,
   type PickResultsRow,
 } from './pickResultsUtils';
@@ -13,20 +14,29 @@ export interface PickTaskCardProps {
   row: PickResultsRow;
   task: TaskItem;
   members: GroupMember[];
-  assignedMemberIds: number[];
+  /** Current working selection (draft or server). */
+  selectedMemberIds: number[];
+  serverMemberIds: number[];
+  assignDirty: boolean;
   currentMemberId: number | null;
-  assigning: boolean;
-  onToggleAssign: (memberId: number) => void;
+  savePending: boolean;
+  onToggleMember: (memberId: number) => void;
+  onSaveAssignees: () => void;
+  onDiscardAssignees: () => void;
 }
 
 export default function PickTaskCard({
   row,
   task,
   members,
-  assignedMemberIds,
+  selectedMemberIds,
+  serverMemberIds,
+  assignDirty,
   currentMemberId,
-  assigning,
-  onToggleAssign,
+  savePending,
+  onToggleMember,
+  onSaveAssignees,
+  onDiscardAssignees,
 }: PickTaskCardProps) {
   const sorted = sortPickMembersForDisplay(row.byMember);
   const nameById = new Map(members.map(m => [m.id, m.name] as const));
@@ -36,12 +46,14 @@ export default function PickTaskCard({
   const hasResponses = row.maxRating != null && row.topMemberIds.length > 0;
   const bestFitLine = formatBestFitSummary(row.topMemberIds, nameById, hasResponses);
 
-  const assignedNames = assignedMemberIds
+  const assignedNames = selectedMemberIds
     .map(id => members.find(m => m.id === id)?.name ?? nameById.get(id) ?? `#${id}`)
     .sort((a, b) => a.localeCompare(b));
   const assignedLine = formatAssignedFooter(assignedNames);
 
   const canAssign = currentMemberId != null;
+  const syncedWithServer = sameSortedMemberIds(selectedMemberIds, serverMemberIds);
+  const showSavedHint = canAssign && !assignDirty && serverMemberIds.length > 0 && syncedWithServer;
 
   return (
     <li className="pick-results-task-card">
@@ -53,7 +65,7 @@ export default function PickTaskCard({
         {sorted.map(cell => {
           const member = pickMemberRecord(members, cell.memberId, cell.memberName);
           const isRecommended = hasResponses && row.topMemberIds.includes(cell.memberId);
-          const isAssigned = assignedMemberIds.includes(cell.memberId);
+          const isSelected = selectedMemberIds.includes(cell.memberId);
           return (
             <li key={cell.memberId} className="pick-results-candidate-item">
               <PickCandidateRow
@@ -61,10 +73,10 @@ export default function PickTaskCard({
                 taskName={task.name}
                 rating={cell.rating}
                 isRecommended={isRecommended}
-                isAssigned={isAssigned}
+                isSelected={isSelected}
                 disabled={!canAssign}
-                busy={assigning}
-                onToggle={() => onToggleAssign(cell.memberId)}
+                savePending={savePending}
+                onToggle={() => onToggleMember(cell.memberId)}
               />
             </li>
           );
@@ -73,32 +85,56 @@ export default function PickTaskCard({
       <div className="pick-results-footer">
         {!canAssign ? (
           <p className="pick-results-footer-hint">Sign in to assign teammates to this task.</p>
-        ) : assignedLine ? (
-          <>
-            <div className="pick-results-footer-strip" aria-hidden>
-              {assignedMemberIds.map(id => {
-                const m = pickMemberRecord(members, id, nameById.get(id) ?? '');
-                const c = memberChipColor(m);
-                const ini = (m.avatarInitial ?? m.name.charAt(0) ?? '?').toUpperCase();
-                return (
-                  <span
-                    key={id}
-                    className="pick-results-footer-avatar"
-                    style={{ backgroundColor: c, color: '#fff' }}
-                    title={m.name}
-                  >
-                    {ini}
-                  </span>
-                );
-              })}
-            </div>
-            <p className="pick-results-footer-assigned">{assignedLine}</p>
-            {assignedMemberIds.length > 1 ? (
-              <p className="pick-results-footer-count">{assignedMemberIds.length} people assigned</p>
-            ) : null}
-          </>
         ) : (
-          <p className="pick-results-footer-hint">Click a teammate to assign</p>
+          <>
+            {selectedMemberIds.length > 0 ? (
+              <div className="pick-results-footer-strip" aria-hidden>
+                {selectedMemberIds.map(id => {
+                  const m = pickMemberRecord(members, id, nameById.get(id) ?? '');
+                  const c = memberChipColor(m);
+                  const ini = (m.avatarInitial ?? m.name.charAt(0) ?? '?').toUpperCase();
+                  return (
+                    <span
+                      key={id}
+                      className="pick-results-footer-avatar"
+                      style={{ backgroundColor: c, color: '#fff' }}
+                      title={m.name}
+                    >
+                      {ini}
+                    </span>
+                  );
+                })}
+              </div>
+            ) : null}
+            {assignedLine ? <p className="pick-results-footer-assigned">{assignedLine}</p> : null}
+            {selectedMemberIds.length > 1 ? (
+              <p className="pick-results-footer-count">{selectedMemberIds.length} people selected</p>
+            ) : null}
+            {assignDirty ? (
+              <div className="pick-results-footer-actions flex gap-2 flex-wrap mt-2">
+                <button
+                  type="button"
+                  className="btn btn-primary btn-sm"
+                  disabled={savePending}
+                  onClick={() => void onSaveAssignees()}
+                >
+                  {savePending ? 'Saving…' : 'Save assignees'}
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  disabled={savePending}
+                  onClick={onDiscardAssignees}
+                >
+                  Discard
+                </button>
+              </div>
+            ) : (
+              <p className="pick-results-footer-hint mt-2">
+                {showSavedHint ? 'Assignments saved.' : 'Select teammates with the checkboxes, then click Save assignees.'}
+              </p>
+            )}
+          </>
         )}
       </div>
     </li>

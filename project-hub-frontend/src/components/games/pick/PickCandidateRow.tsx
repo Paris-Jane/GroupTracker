@@ -8,9 +8,9 @@ export interface PickCandidateRowProps {
   taskName: string;
   rating: number | null;
   isRecommended: boolean;
-  isAssigned: boolean;
+  isSelected: boolean;
   disabled: boolean;
-  busy: boolean;
+  savePending: boolean;
   onToggle: () => void;
 }
 
@@ -19,26 +19,33 @@ export default function PickCandidateRow({
   taskName,
   rating,
   isRecommended,
-  isAssigned,
+  isSelected,
   disabled,
-  busy,
+  savePending,
   onToggle,
 }: PickCandidateRowProps) {
   const bg = memberChipColor(member);
   const initial = (member.avatarInitial ?? member.name.charAt(0) ?? '?').toUpperCase();
-  const assignAction = isAssigned ? 'Unassign' : 'Assign';
-  const label = `${assignAction} ${member.name} ${isAssigned ? 'from' : 'to'} ${taskName}`;
+  const frozen = disabled || savePending;
+  const label = isSelected
+    ? `Unselect ${member.name} for ${taskName}`
+    : `Select ${member.name} for ${taskName}`;
 
   return (
-    <button
-      type="button"
-      className={`pick-results-row${isRecommended ? ' pick-results-row--recommended' : ''}${isAssigned ? ' pick-results-row--assigned' : ''}${busy ? ' pick-results-row--busy' : ''}`}
+    <label
+      className={`pick-results-row pick-results-row--label${isRecommended ? ' pick-results-row--recommended' : ''}${isSelected ? ' pick-results-row--assigned' : ''}${frozen ? ' pick-results-row--frozen' : ''}`}
       style={{ '--pick-row-accent': bg } as CSSProperties}
-      disabled={disabled || busy}
-      aria-label={label}
-      aria-pressed={isAssigned}
-      onClick={onToggle}
     >
+      <input
+        type="checkbox"
+        className="pick-results-checkbox"
+        checked={isSelected}
+        disabled={frozen}
+        aria-label={label}
+        onChange={() => {
+          if (!frozen) onToggle();
+        }}
+      />
       <span className="pick-results-row-avatar" aria-hidden>
         <span className="pick-results-row-avatar-circle" style={{ backgroundColor: bg, color: '#fff' }}>
           {initial}
@@ -50,8 +57,8 @@ export default function PickCandidateRow({
           {isRecommended ? (
             <span className="pick-results-row-badge">Best fit</span>
           ) : null}
-          {isAssigned ? (
-            <span className="pick-results-row-assigned-mark" aria-hidden title="Assigned">
+          {isSelected ? (
+            <span className="pick-results-row-assigned-mark" aria-hidden title="Selected">
               <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden>
                 <path
                   d="M13.5 4.5L6.5 11.5L3 8"
@@ -66,6 +73,6 @@ export default function PickCandidateRow({
         </span>
         <PickScoreDisplay rating={rating} />
       </span>
-    </button>
+    </label>
   );
 }
