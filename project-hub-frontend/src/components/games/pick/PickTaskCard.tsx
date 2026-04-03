@@ -19,9 +19,8 @@ export interface PickTaskCardProps {
   serverMemberIds: number[];
   assignDirty: boolean;
   currentMemberId: number | null;
-  savePending: boolean;
+  savingAllAssignees: boolean;
   onToggleMember: (memberId: number) => void;
-  onSaveAssignees: () => void;
   onDiscardAssignees: () => void;
 }
 
@@ -33,9 +32,8 @@ export default function PickTaskCard({
   serverMemberIds,
   assignDirty,
   currentMemberId,
-  savePending,
+  savingAllAssignees,
   onToggleMember,
-  onSaveAssignees,
   onDiscardAssignees,
 }: PickTaskCardProps) {
   const sorted = sortPickMembersForDisplay(row.byMember);
@@ -75,7 +73,7 @@ export default function PickTaskCard({
                 isRecommended={isRecommended}
                 isSelected={isSelected}
                 disabled={!canAssign}
-                savePending={savePending}
+                savePending={savingAllAssignees}
                 onToggle={() => onToggleMember(cell.memberId)}
               />
             </li>
@@ -114,24 +112,18 @@ export default function PickTaskCard({
               <div className="pick-results-footer-actions flex gap-2 flex-wrap mt-2">
                 <button
                   type="button"
-                  className="btn btn-primary btn-sm"
-                  disabled={savePending}
-                  onClick={() => void onSaveAssignees()}
-                >
-                  {savePending ? 'Saving…' : 'Save assignees'}
-                </button>
-                <button
-                  type="button"
                   className="btn btn-secondary btn-sm"
-                  disabled={savePending}
+                  disabled={savingAllAssignees}
                   onClick={onDiscardAssignees}
                 >
-                  Discard
+                  Discard this task
                 </button>
               </div>
             ) : (
               <p className="pick-results-footer-hint mt-2">
-                {showSavedHint ? 'Assignments saved.' : 'Select teammates with the checkboxes, then click Save assignees.'}
+                {showSavedHint
+                  ? 'Assignments saved.'
+                  : 'Select teammates with the checkboxes, then use Save all assignees above.'}
               </p>
             )}
           </>

@@ -48,7 +48,7 @@ export default function PickTasksModal({
   const [resultsLoading, setResultsLoading] = useState(false);
   /** Pending assignee picks per task; undefined key → use server `task.assignments`. */
   const [assignDraft, setAssignDraft] = useState<Record<number, number[] | undefined>>({});
-  const [assignSavePending, setAssignSavePending] = useState<Record<number, boolean>>({});
+  const [savingAllAssignees, setSavingAllAssignees] = useState(false);
   const [assignError, setAssignError] = useState('');
   const assignDraftRef = useRef(assignDraft);
   assignDraftRef.current = assignDraft;
@@ -80,6 +80,19 @@ export default function PickTasksModal({
     return out;
   }, [draft, sortedTasks]);
 
+  const { assignDirtyCount, hasAnyAssignDirty } = useMemo(() => {
+    let n = 0;
+    for (const tidStr of Object.keys(assignDraft)) {
+      const taskId = Number(tidStr);
+      const d = assignDraft[taskId];
+      const task = taskMap.get(taskId);
+      if (d === undefined || !task) continue;
+      const server = task.assignments.map(a => Number(a.groupMemberId));
+      if (!sameSortedMemberIds(d, server)) n += 1;
+    }
+    return { assignDirtyCount: n, hasAnyAssignDirty: n > 0 };
+  }, [assignDraft, taskMap]);
+
   useEffect(() => {
     if (!open) {
       setFlow('menu');
@@ -89,7 +102,7 @@ export default function PickTasksModal({
       setDraftLoading(false);
       setSaving(false);
       setAssignDraft({});
-      setAssignSavePending({});
+      setSavingAllAssignees(false);
       setAssignError('');
       return;
     }
@@ -176,31 +189,40 @@ export default function PickTasksModal({
     });
   }, []);
 
-  const saveAssigneesForTask = useCallback(
-    async (taskId: number) => {
-      if (memberId == null) return;
-      const draft = assignDraftRef.current[taskId];
-      if (draft === undefined) return;
-      setAssignSavePending(p => ({ ...p, [taskId]: true }));
-      setAssignError('');
-      try {
+  const saveAllAssignDrafts = useCallback(async () => {
+    if (memberId == null) return;
+    const map = taskMapRef.current;
+    const snapshot = { ...assignDraftRef.current };
+    const dirtyIds: number[] = [];
+    for (const tidStr of Object.keys(snapshot)) {
+      const taskId = Number(tidStr);
+      const draft = snapshot[taskId];
+      const task = map.get(taskId);
+      if (draft === undefined || !task) continue;
+      const server = task.assignments.map(a => Number(a.groupMemberId));
+      if (!sameSortedMemberIds(draft, server)) dirtyIds.push(taskId);
+    }
+    if (dirtyIds.length === 0) return;
+    setSavingAllAssignees(true);
+    setAssignError('');
+    try {
+      for (const taskId of dirtyIds) {
+        const draft = snapshot[taskId];
+        if (draft === undefined) continue;
         await assignTask(taskId, draft, memberId);
-        await Promise.resolve(onTasksChanged?.());
         setAssignDraft(prev => {
           const { [taskId]: _, ...rest } = prev;
           return rest;
         });
-      } catch {
-        setAssignError('Could not save assignees. Check your connection and try again.');
-      } finally {
-        setAssignSavePending(p => {
-          const { [taskId]: _, ...rest } = p;
-          return rest;
-        });
       }
-    },
-    [memberId, onTasksChanged],
-  );
+      await Promise.resolve(onTasksChanged?.());
+    } catch {
+      setAssignError('Could not save all assignees. Check your connection and try again.');
+      await Promise.resolve(onTasksChanged?.());
+    } finally {
+      setSavingAllAssignees(false);
+    }
+  }, [memberId, onTasksChanged]);
 
   const saveRankings = async () => {
     if (memberId == null) return;
@@ -315,18 +337,32 @@ export default function PickTasksModal({
 
   const resultsView = (
     <div>
-      <div className="flex gap-2 flex-wrap mb-3">
+      <div className="flex gap-2 flex-wrap items-center mb-3">
         <button type="button" className="btn btn-ghost btn-sm" onClick={() => setFlow('menu')}>
           ← Back
         </button>
         <button
           type="button"
           className="btn btn-secondary btn-sm"
-          disabled={resultsLoading}
+          disabled={resultsLoading || savingAllAssignees}
           onClick={() => void loadResults({ silent: false })}
         >
           Refresh
         </button>
+        {memberId != null ? (
+          <button
+            type="button"
+            className="btn btn-primary btn-sm"
+            disabled={!hasAnyAssignDirty || savingAllAssignees || resultsLoading}
+            onClick={() => void saveAllAssignDrafts()}
+          >
+            {savingAllAssignees
+              ? 'Saving…'
+              : assignDirtyCount > 0
+                ? `Save all assignees (${assignDirtyCount})`
+                : 'Save all assignees'}
+          </button>
+        ) : null}
       </div>
       {assignError ? <div className="form-error mb-2">{assignError}</div> : null}
       {taskOrder.length === 0 ? (
@@ -353,9 +389,8 @@ export default function PickTasksModal({
                   serverMemberIds={serverIds}
                   assignDirty={assignDirty}
                   currentMemberId={memberId}
-                  savePending={!!assignSavePending[row.taskId]}
+                  savingAllAssignees={savingAllAssignees}
                   onToggleMember={mid => toggleAssignSelection(row.taskId, mid)}
-                  onSaveAssignees={() => void saveAssigneesForTask(row.taskId)}
                   onDiscardAssignees={() => discardAssignDraft(row.taskId)}
                 />
               );
