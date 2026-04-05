@@ -204,6 +204,9 @@ export default function ScrumPage({ currentMember, members }: Props) {
   const [productGoalDraft, setProductGoalDraft] = useState('');
   const [sprintGoalDraft, setSprintGoalDraft] = useState('');
   const [sprintDueDraft, setSprintDueDraft] = useState('');
+  const [productOwnerDraft, setProductOwnerDraft] = useState('');
+  const [scrumMasterDraft, setScrumMasterDraft] = useState('');
+  const [showRolesOnSprintPageDraft, setShowRolesOnSprintPageDraft] = useState(false);
 
   const [ctxMenu, setCtxMenu] = useState<CtxMenu | null>(null);
   const [dragOver, setDragOver] = useState<BoardCol | null>(null);
@@ -286,7 +289,17 @@ export default function ScrumPage({ currentMember, members }: Props) {
   useEffect(() => {
     setSprintGoalDraft(currentGoal?.goal ?? '');
     setSprintDueDraft(currentGoal?.sprintDueDate?.split('T')[0] ?? '');
-  }, [currentGoal?.goal, currentGoal?.sprintDueDate, sprintNum]);
+    setProductOwnerDraft(currentGoal?.productOwner ?? '');
+    setScrumMasterDraft(currentGoal?.scrumMaster ?? '');
+    setShowRolesOnSprintPageDraft(currentGoal?.showRolesOnSprintPage ?? false);
+  }, [
+    currentGoal?.goal,
+    currentGoal?.sprintDueDate,
+    currentGoal?.productOwner,
+    currentGoal?.scrumMaster,
+    currentGoal?.showRolesOnSprintPage,
+    sprintNum,
+  ]);
 
   const sprintTasks = useMemo(
     () => tasks.filter(t => t.sprintNumber === sprintNum),
@@ -325,6 +338,9 @@ export default function ScrumPage({ currentMember, members }: Props) {
     if (settings) setProductGoalDraft(settings.productGoal);
     setSprintGoalDraft(currentGoal?.goal ?? '');
     setSprintDueDraft(currentGoal?.sprintDueDate?.split('T')[0] ?? '');
+    setProductOwnerDraft(currentGoal?.productOwner ?? '');
+    setScrumMasterDraft(currentGoal?.scrumMaster ?? '');
+    setShowRolesOnSprintPageDraft(currentGoal?.showRolesOnSprintPage ?? false);
     setDetailsModalOpen(true);
   }, [settings, currentGoal]);
 
@@ -339,6 +355,9 @@ export default function ScrumPage({ currentMember, members }: Props) {
         sprintNumber: sprintNum,
         goal: sprintGoalDraft.trim(),
         sprintDueDate: sprintDueDraft || undefined,
+        productOwner: productOwnerDraft.trim(),
+        scrumMaster: scrumMasterDraft.trim(),
+        showRolesOnSprintPage: showRolesOnSprintPageDraft,
       });
       await loadGoals();
       setDetailsModalOpen(false);
@@ -393,6 +412,9 @@ export default function ScrumPage({ currentMember, members }: Props) {
           sprintNumber: i,
           goal,
           sprintDueDate: g?.sprintDueDate,
+          productOwner: g?.productOwner,
+          scrumMaster: g?.scrumMaster,
+          showRolesOnSprintPage: g?.showRolesOnSprintPage,
         });
       }
       await loadGoals();
@@ -461,6 +483,18 @@ export default function ScrumPage({ currentMember, members }: Props) {
                 <span className="sprint-details-k">Sprint goal</span>
                 <p className="sprint-details-p">{sprintGoalText || '—'}</p>
               </div>
+              {currentGoal?.showRolesOnSprintPage ? (
+                <>
+                  <div className="sprint-details-block">
+                    <span className="sprint-details-k">Product owner</span>
+                    <p className="sprint-details-p">{currentGoal.productOwner?.trim() || '—'}</p>
+                  </div>
+                  <div className="sprint-details-block">
+                    <span className="sprint-details-k">Scrum master</span>
+                    <p className="sprint-details-p">{currentGoal.scrumMaster?.trim() || '—'}</p>
+                  </div>
+                </>
+              ) : null}
             </div>
             <div className="sprint-details-right">
               <div className="sprint-details-progress" role="group" aria-label="Sprint completion">
@@ -915,6 +949,41 @@ export default function ScrumPage({ currentMember, members }: Props) {
               <div className="form-row">
                 <label>Deadline</label>
                 <input type="date" value={sprintDueDraft} onChange={e => setSprintDueDraft(e.target.value)} disabled={savingDetails} />
+              </div>
+              <div className="form-row">
+                <label htmlFor="sprint-po">Product owner</label>
+                <input
+                  id="sprint-po"
+                  type="text"
+                  value={productOwnerDraft}
+                  onChange={e => setProductOwnerDraft(e.target.value)}
+                  placeholder="Name"
+                  disabled={savingDetails}
+                  autoComplete="name"
+                />
+              </div>
+              <div className="form-row">
+                <label htmlFor="sprint-sm">Scrum master</label>
+                <input
+                  id="sprint-sm"
+                  type="text"
+                  value={scrumMasterDraft}
+                  onChange={e => setScrumMasterDraft(e.target.value)}
+                  placeholder="Name"
+                  disabled={savingDetails}
+                  autoComplete="name"
+                />
+              </div>
+              <div className="form-row">
+                <label className="flex-center gap-2" style={{ cursor: savingDetails ? 'default' : 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={showRolesOnSprintPageDraft}
+                    onChange={e => setShowRolesOnSprintPageDraft(e.target.checked)}
+                    disabled={savingDetails}
+                  />
+                  <span>Show product owner and scrum master on the sprint page</span>
+                </label>
               </div>
             </div>
             <div className="modal-footer">

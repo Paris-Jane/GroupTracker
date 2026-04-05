@@ -182,6 +182,10 @@ export interface SprintGoal {
   sprintNumber: number;
   goal: string;
   sprintDueDate?: string;
+  productOwner?: string;
+  scrumMaster?: string;
+  /** When true, sprint page shows product owner and scrum master for this sprint. */
+  showRolesOnSprintPage?: boolean;
 }
 
 export type SprintReviewKind = 'well' | 'improve';

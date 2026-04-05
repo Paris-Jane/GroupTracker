@@ -591,13 +591,25 @@ export async function adminBulkReset(opts: AdminBulkResetOptions): Promise<void>
 
 // ── Sprint goals & reviews ─────────────────────────────────────────────────
 
+type SprintGoalRow = {
+  sprint_number: number;
+  goal: string;
+  sprint_due_date: string | null;
+  product_owner?: string | null;
+  scrum_master?: string | null;
+  show_roles_on_sprint_page?: boolean | null;
+};
+
 export async function getSprintGoals(): Promise<SprintGoal[]> {
   const { data, error } = await supabase.from('sprint_goals').select('*').order('sprint_number');
   if (error) err(error, 'Failed to load sprint goals');
-  return (data as { sprint_number: number; goal: string; sprint_due_date: string | null }[]).map(r => ({
+  return (data as SprintGoalRow[]).map(r => ({
     sprintNumber: r.sprint_number,
     goal: r.goal,
     sprintDueDate: r.sprint_due_date ?? undefined,
+    productOwner: r.product_owner?.trim() ? r.product_owner : undefined,
+    scrumMaster: r.scrum_master?.trim() ? r.scrum_master : undefined,
+    showRolesOnSprintPage: Boolean(r.show_roles_on_sprint_page),
   }));
 }
 
@@ -606,6 +618,9 @@ export async function upsertSprintGoal(g: SprintGoal): Promise<void> {
     sprint_number: g.sprintNumber,
     goal: g.goal,
     sprint_due_date: g.sprintDueDate ?? null,
+    product_owner: g.productOwner?.trim() ?? '',
+    scrum_master: g.scrumMaster?.trim() ?? '',
+    show_roles_on_sprint_page: g.showRolesOnSprintPage ?? false,
   });
   if (error) err(error, 'Failed to save sprint goal');
 }
