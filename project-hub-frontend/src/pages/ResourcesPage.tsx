@@ -52,6 +52,12 @@ function copyText(text: string) {
   void navigator.clipboard.writeText(text);
 }
 
+/** List view: show title only; URL stays in href and in the edit modal. */
+function resourceLinkLabel(title: string | undefined): string {
+  const t = title?.trim();
+  return t && t.length > 0 ? t : 'Untitled link';
+}
+
 export default function ResourcesPage({}: Props) {
   const [links, setLinks] = useState<QuickLink[]>([]);
   const [resources, setResources] = useState<ResourceItemRow[]>([]);
@@ -94,7 +100,7 @@ export default function ResourcesPage({}: Props) {
                 <li key={l.id} className="resource-url-only-row">
                   {l.url ? (
                     <a href={l.url} target="_blank" rel="noreferrer" className="resource-url-only-link">
-                      {l.url}
+                      {resourceLinkLabel(l.title)}
                     </a>
                   ) : (
                     <span className="resource-url-missing">No URL</span>
@@ -118,7 +124,7 @@ export default function ResourcesPage({}: Props) {
                 <li key={r.id} className="resource-url-only-row">
                   {r.url ? (
                     <a href={r.url} target="_blank" rel="noreferrer" className="resource-url-only-link">
-                      {r.url}
+                      {resourceLinkLabel(r.title)}
                     </a>
                   ) : (
                     <span className="resource-url-missing">No URL</span>
@@ -142,7 +148,7 @@ export default function ResourcesPage({}: Props) {
                 <li key={r.id} className="resource-url-only-row">
                   {r.url ? (
                     <a href={r.url} target="_blank" rel="noreferrer" className="resource-url-only-link">
-                      {r.url}
+                      {resourceLinkLabel(r.title)}
                     </a>
                   ) : (
                     <span className="resource-url-missing">No URL</span>
@@ -174,10 +180,10 @@ export default function ResourcesPage({}: Props) {
                       <li key={r.id} className="resource-url-only-row">
                         {r.url ? (
                           <a href={r.url} target="_blank" rel="noreferrer" className="resource-url-only-link resource-class-title-link">
-                            {r.title || r.url}
+                            {resourceLinkLabel(r.title)}
                           </a>
                         ) : (
-                          <span className="resource-url-missing">{r.title || 'No URL'}</span>
+                          <span className="resource-url-missing">{r.title?.trim() || 'No URL'}</span>
                         )}
                       </li>
                     ))}
@@ -296,7 +302,7 @@ export default function ResourcesPage({}: Props) {
           reorderable
           rows={bySection(manageScope.section).map(r => ({
             id: r.id,
-            primary: r.url || '(no URL)',
+            primary: resourceLinkLabel(r.title),
             onEdit: () => {
               setManageScope(null);
               setEditingResource(r);
