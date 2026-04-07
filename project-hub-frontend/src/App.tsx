@@ -1,4 +1,4 @@
-import { NavLink, Routes, Route } from 'react-router-dom';
+import { NavLink, Routes, Route, useLocation } from 'react-router-dom';
 import { useEffect, useState } from 'react';
 import { useAuth } from './auth/AuthContext';
 import { getMembers } from './api/client';
@@ -21,8 +21,10 @@ function navClass({ isActive }: { isActive: boolean }) {
 }
 
 export default function App() {
+  const { pathname } = useLocation();
   const { user, logout, loading } = useAuth();
   const [members, setMembers] = useState<GroupMember[]>([]);
+  const mainClass = pathname === '/rubric' ? 'app-main app-main--wide' : 'app-main';
 
   useEffect(() => {
     if (!isSupabaseConfigured || !user) return;
@@ -77,7 +79,7 @@ export default function App() {
           </button>
         </div>
       </header>
-      <main className="app-main">
+      <main className={mainClass}>
         <Routes>
           <Route path="/" element={<HomePage />} />
           <Route path="/tasks" element={<TasksPage currentMember={user} members={members} />} />

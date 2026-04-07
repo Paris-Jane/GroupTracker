@@ -581,6 +581,11 @@ tr:hover td { background: var(--surface-hover); }
   box-sizing: border-box;
 }
 
+/** Rubric: five columns need more horizontal room than the default page cap. */
+.app-main--wide {
+  max-width: min(1520px, 100%);
+}
+
 /* ── Login ─────────────────────────────────────────────────────────────────── */
 
 .login-page {
@@ -808,6 +813,8 @@ tr:hover td { background: var(--surface-hover); }
   gap: 16px;
   margin-top: 8px;
   align-items: start;
+  width: 100%;
+  min-width: 0;
 }
 
 @media (max-width: 1200px) {
@@ -823,8 +830,9 @@ tr:hover td { background: var(--surface-hover); }
 }
 
 .rubric-column {
-  padding: 14px 16px;
   min-width: 0;
+  /* .card already provides padding; keep column content bounded */
+  overflow-wrap: anywhere;
 }
 
 .rubric-column-head {
@@ -833,11 +841,13 @@ tr:hover td { background: var(--surface-hover); }
   justify-content: space-between;
   gap: 8px;
   margin-bottom: 10px;
+  min-width: 0;
 }
 
 .rubric-column-title {
   margin: 0;
   font-size: 1rem;
+  min-width: 0;
 }
 
 .rubric-item-list {
@@ -847,6 +857,7 @@ tr:hover td { background: var(--surface-hover); }
   display: flex;
   flex-direction: column;
   gap: 10px;
+  min-width: 0;
 }
 
 .rubric-item-row {
@@ -855,6 +866,9 @@ tr:hover td { background: var(--surface-hover); }
   gap: 6px;
   padding-bottom: 10px;
   border-bottom: 1px solid var(--border);
+  min-width: 0;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .rubric-item-row:last-child {
@@ -862,24 +876,34 @@ tr:hover td { background: var(--surface-hover); }
   padding-bottom: 0;
 }
 
-.rubric-item-check {
+/* Override global `label { display: block }` and fix flex min-width so text wraps inside grid cells */
+label.rubric-item-check {
   display: flex;
   align-items: flex-start;
   gap: 10px;
   cursor: pointer;
   margin: 0;
-  font-weight: normal;
+  font-weight: 400;
+  min-width: 0;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
-.rubric-item-check input {
+.rubric-item-check input[type='checkbox'] {
   margin-top: 3px;
   flex-shrink: 0;
 }
 
 .rubric-item-body {
+  flex: 1 1 0%;
+  min-width: 0;
+  max-width: 100%;
   font-size: 13px;
   line-height: 1.45;
-  min-width: 0;
+  overflow-wrap: break-word;
+  word-wrap: break-word;
+  word-break: break-word;
 }
 
 .rubric-item-body--done {
