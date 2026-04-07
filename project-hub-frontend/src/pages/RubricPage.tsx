@@ -34,8 +34,11 @@ function nextRubricProgressStatus(s: TaskStatus): TaskStatus {
 function rubricSectionProgressStats(rows: RubricRequirement[]) {
   const total = rows.length;
   const completed = rows.filter(r => r.progressStatus === 'Completed').length;
+  const inProgress = rows.filter(r => r.progressStatus === 'InProgress').length;
+  const started = completed + inProgress;
   const pct = total ? Math.round((completed / total) * 100) : 0;
-  return { total, completed, pct };
+  const startedPct = total ? Math.round((started / total) * 100) : 0;
+  return { total, completed, inProgress, started, pct, startedPct };
 }
 
 function RequirementEditModal({
@@ -280,14 +283,16 @@ export default function RubricPage({ currentMember }: Props) {
               </div>
               {sp.total > 0 ? (
                 <div className="rubric-column-progress">
-                  <div className="home-progress-bar">
+                  <div className="rubric-progress-track" aria-hidden>
+                    <div className="rubric-progress-layer rubric-progress-layer--started" style={{ width: `${sp.startedPct}%` }} />
                     <div
-                      className={`home-progress-fill${sp.pct === 100 ? ' home-progress-fill--complete' : ''}`}
+                      className={`rubric-progress-layer rubric-progress-layer--completed${sp.pct === 100 ? ' rubric-progress-layer--all-done' : ''}`}
                       style={{ width: `${sp.pct}%` }}
                     />
                   </div>
                   <div className="rubric-column-progress-label">
                     {sp.completed} of {sp.total} done ({sp.pct}%)
+                    {sp.inProgress > 0 ? ` · ${sp.inProgress} in progress` : ''}
                   </div>
                 </div>
               ) : null}
