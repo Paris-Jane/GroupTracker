@@ -202,6 +202,29 @@ export interface SprintReview {
   createdAt: string;
 }
 
+/** Course rubric buckets on the Rubric checklist page. */
+export type RubricSection = '401' | '413' | '414' | '455' | 'presentation';
+
+export const RUBRIC_SECTIONS: readonly RubricSection[] = ['401', '413', '414', '455', 'presentation'];
+
+export interface RubricRequirement {
+  id: number;
+  section: RubricSection;
+  body: string;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+  /** Set when loaded with a member id: whether that member checked this off. */
+  completedByMe?: boolean;
+}
+
+/** One row from AI bulk-import JSON (`text` or `body`). */
+export interface BulkImportRubricItemDto {
+  section: RubricSection;
+  text?: string;
+  body?: string;
+}
+
 export interface CreateTaskDto {
   name: string;
   notes?: string;

@@ -9,6 +9,7 @@ import TasksPage from './pages/TasksPage';
 import ScrumPage from './pages/ScrumPage';
 import ResourcesPage from './pages/ResourcesPage';
 import SchedulePage from './pages/SchedulePage';
+import RubricPage from './pages/RubricPage';
 import UserAvatar from './components/common/UserAvatar';
 import SupabaseConfigMissing from './components/SupabaseConfigMissing';
 import { isSupabaseConfigured } from './lib/supabaseConfig';
@@ -61,6 +62,9 @@ export default function App() {
           <NavLink to="/resources" className={navClass}>
             Resources
           </NavLink>
+          <NavLink to="/rubric" className={navClass}>
+            Rubric
+          </NavLink>
           <NavLink to="/schedule" className={navClass}>
             Schedule
           </NavLink>
@@ -79,6 +83,7 @@ export default function App() {
           <Route path="/tasks" element={<TasksPage currentMember={user} members={members} />} />
           <Route path="/scrum" element={<ScrumPage currentMember={user} members={members} />} />
           <Route path="/resources" element={<ResourcesPage currentMember={user} members={members} />} />
+          <Route path="/rubric" element={<RubricPage currentMember={user} members={members} />} />
           <Route path="/schedule" element={<SchedulePage currentMember={user} members={members} />} />
         </Routes>
       </main>

@@ -1,4 +1,5 @@
 import { supabase } from '../lib/supabase';
+import { RUBRIC_SECTIONS } from '../types';
 import type {
   GroupMember,
   TaskItem,
@@ -25,6 +26,8 @@ import type {
   ResourceSection,
   ClassLinkCategory,
   ScheduleCategory,
+  RubricSection,
+  RubricRequirement,
 } from '../types';
 
 function err(e: { message?: string } | null, fallback: string): never {
@@ -1019,6 +1022,150 @@ export async function updateResourceRow(
 export async function deleteResourceRow(id: number): Promise<void> {
   const { error } = await supabase.from('resource_items').delete().eq('id', id);
   if (error) err(error, 'Failed to delete');
+}
+
+// ── Rubric checklist ───────────────────────────────────────────────────────
+
+type RubricReqRow = {
+  id: number;
+  section: string;
+  body: string;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+};
+
+function mapRubricRequirement(r: RubricReqRow): RubricRequirement {
+  return {
+    id: Number(r.id),
+    section: r.section as RubricSection,
+    body: r.body ?? '',
+    sortOrder: r.sort_order ?? 0,
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+  };
+}
+
+export async function getRubricRequirements(forMemberId?: number): Promise<RubricRequirement[]> {
+  const { data, error } = await supabase
+    .from('rubric_requirements')
+    .select('*')
+    .order('section', { ascending: true })
+    .order('sort_order', { ascending: true })
+    .order('id', { ascending: true });
+  if (error) err(error, 'Failed to load rubric');
+  const rows = (data as RubricReqRow[] | null) ?? [];
+  const mapped = rows.map(mapRubricRequirement);
+  if (forMemberId == null) return mapped;
+  const { data: comps, error: e2 } = await supabase
+    .from('rubric_completions')
+    .select('requirement_id')
+    .eq('group_member_id', forMemberId);
+  if (e2) err(e2, 'Failed to load rubric completions');
+  const done = new Set((comps as { requirement_id: number }[] | null)?.map(c => Number(c.requirement_id)) ?? []);
+  return mapped.map(r => ({ ...r, completedByMe: done.has(r.id) }));
+}
+
+async function nextRubricSortOrder(section: RubricSection): Promise<number> {
+  const { data, error } = await supabase
+    .from('rubric_requirements')
+    .select('sort_order')
+    .eq('section', section)
+    .order('sort_order', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) err(error, 'Failed to read rubric order');
+  const max = data?.sort_order != null ? Number(data.sort_order) : -1;
+  return max + 1;
+}
+
+export async function createRubricRequirement(p: {
+  section: RubricSection;
+  body: string;
+}): Promise<RubricRequirement> {
+  const now = new Date().toISOString();
+  const sortOrder = await nextRubricSortOrder(p.section);
+  const { data, error } = await supabase
+    .from('rubric_requirements')
+    .insert({
+      section: p.section,
+      body: p.body.trim(),
+      sort_order: sortOrder,
+      created_at: now,
+      updated_at: now,
+    })
+    .select()
+    .single();
+  if (error || !data) err(error, 'Failed to create rubric item');
+  return mapRubricRequirement(data as RubricReqRow);
+}
+
+export async function updateRubricRequirement(
+  id: number,
+  p: { section?: RubricSection; body?: string },
+): Promise<RubricRequirement> {
+  const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
+  if (p.section !== undefined) patch.section = p.section;
+  if (p.body !== undefined) patch.body = p.body.trim();
+  const { data, error } = await supabase.from('rubric_requirements').update(patch).eq('id', id).select().single();
+  if (error || !data) err(error, 'Failed to update rubric item');
+  return mapRubricRequirement(data as RubricReqRow);
+}
+
+export async function deleteRubricRequirement(id: number): Promise<void> {
+  const { error } = await supabase.from('rubric_requirements').delete().eq('id', id);
+  if (error) err(error, 'Failed to delete rubric item');
+}
+
+export async function setRubricCompletion(
+  requirementId: number,
+  groupMemberId: number,
+  completed: boolean,
+): Promise<void> {
+  const { error: delErr } = await supabase
+    .from('rubric_completions')
+    .delete()
+    .eq('requirement_id', requirementId)
+    .eq('group_member_id', groupMemberId);
+  if (delErr) err(delErr, 'Failed to update completion');
+  if (completed) {
+    const { error } = await supabase
+      .from('rubric_completions')
+      .insert({ requirement_id: requirementId, group_member_id: groupMemberId });
+    if (error) err(error, 'Failed to save completion');
+  }
+}
+
+export async function bulkImportRubricRequirements(
+  items: Array<{ section: RubricSection; body: string }>,
+): Promise<RubricRequirement[]> {
+  if (items.length === 0) return [];
+  const existing = await getRubricRequirements();
+  const maxBy: Record<RubricSection, number> = {
+    '401': -1,
+    '413': -1,
+    '414': -1,
+    '455': -1,
+    presentation: -1,
+  };
+  for (const s of RUBRIC_SECTIONS) {
+    const m = Math.max(-1, ...existing.filter(r => r.section === s).map(r => r.sortOrder));
+    maxBy[s] = m;
+  }
+  const now = new Date().toISOString();
+  const rows = items.map(it => {
+    maxBy[it.section] += 1;
+    return {
+      section: it.section,
+      body: it.body.trim(),
+      sort_order: maxBy[it.section],
+      created_at: now,
+      updated_at: now,
+    };
+  });
+  const { data, error } = await supabase.from('rubric_requirements').insert(rows).select();
+  if (error || !data) err(error, 'Failed to import rubric items');
+  return (data as RubricReqRow[]).map(mapRubricRequirement);
 }
 
 // ── Login items & text notes ────────────────────────────────────────────────
