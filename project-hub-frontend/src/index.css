@@ -842,6 +842,14 @@ tr:hover td { background: var(--surface-hover); }
   min-width: 0;
 }
 
+.rubric-column-actions {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
 .rubric-column-title {
   margin: 0;
   font-size: 1rem;
@@ -912,12 +920,6 @@ label.rubric-item-text {
 .rubric-item-text--done {
   color: var(--text-muted);
   text-decoration: line-through;
-}
-
-.rubric-item-actions {
-  display: flex;
-  gap: 4px;
-  padding-left: 22px;
 }
 
 .rubric-bulk-preview-list {

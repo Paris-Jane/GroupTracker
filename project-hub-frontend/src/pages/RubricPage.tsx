@@ -90,10 +90,68 @@ function RequirementEditModal({
   );
 }
 
+function RubricSectionManageModal({
+  sectionTitle,
+  items,
+  onClose,
+  onEdit,
+  onDelete,
+}: {
+  sectionTitle: string;
+  items: RubricRequirement[];
+  onClose: () => void;
+  onEdit: (r: RubricRequirement) => void;
+  onDelete: (r: RubricRequirement) => void | Promise<void>;
+}) {
+  return (
+    <div className="modal-overlay">
+      <div className="modal modal-lg">
+        <div className="modal-header">
+          <span className="modal-title">Manage — {sectionTitle}</span>
+          <button type="button" className="btn btn-ghost btn-sm" onClick={onClose}>
+            Close
+          </button>
+        </div>
+        <div className="modal-body">
+          {items.length === 0 ? (
+            <p className="empty-hint">No requirements in this section yet.</p>
+          ) : (
+            <ul className="manage-links-list">
+              {items.map(r => (
+                <li key={r.id} className="manage-links-row">
+                  <span className="manage-links-primary">{r.body}</span>
+                  <div className="manage-links-actions">
+                    <button type="button" className="btn btn-ghost btn-xs" onClick={() => onEdit(r)}>
+                      Edit
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-ghost btn-xs text-danger"
+                      onClick={() => void onDelete(r)}
+                    >
+                      Delete
+                    </button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+        <div className="modal-footer">
+          <button type="button" className="btn btn-primary" onClick={onClose}>
+            Done
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function RubricPage({ currentMember }: Props) {
   const [items, setItems] = useState<RubricRequirement[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [bulkOpen, setBulkOpen] = useState(false);
+  const [manageSection, setManageSection] = useState<RubricSection | null>(null);
   const [editDraft, setEditDraft] = useState<{ initial: RubricRequirement | null; defaultSection: RubricSection } | null>(
     null,
   );
@@ -187,13 +245,18 @@ export default function RubricPage({ currentMember }: Props) {
           <section key={section} className="rubric-column card">
             <div className="rubric-column-head">
               <h2 className="panel-heading rubric-column-title">{SECTION_HEADINGS[section]}</h2>
-              <button
-                type="button"
-                className="btn btn-ghost btn-xs"
-                onClick={() => setEditDraft({ initial: null, defaultSection: section })}
-              >
-                + Add
-              </button>
+              <span className="rubric-column-actions">
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-xs"
+                  onClick={() => setEditDraft({ initial: null, defaultSection: section })}
+                >
+                  + Add
+                </button>
+                <button type="button" className="btn btn-ghost btn-xs" onClick={() => setManageSection(section)}>
+                  Manage
+                </button>
+              </span>
             </div>
             <ul className="rubric-item-list">
               {bySection(section).length === 0 ? (
@@ -216,18 +279,6 @@ export default function RubricPage({ currentMember }: Props) {
                         {r.body}
                       </label>
                     </div>
-                    <div className="rubric-item-actions">
-                      <button type="button" className="btn btn-ghost btn-xs" onClick={() => setEditDraft({ initial: r, defaultSection: section })}>
-                        Edit
-                      </button>
-                      <button
-                        type="button"
-                        className="btn btn-ghost btn-xs text-danger"
-                        onClick={() => void handleDelete(r)}
-                      >
-                        Delete
-                      </button>
-                    </div>
                   </li>
                 ))
               )}
@@ -238,6 +289,19 @@ export default function RubricPage({ currentMember }: Props) {
 
       {bulkOpen && currentMember ? (
         <RubricBulkImportModal currentMember={currentMember} onClose={() => setBulkOpen(false)} onImported={load} />
+      ) : null}
+
+      {manageSection != null ? (
+        <RubricSectionManageModal
+          sectionTitle={SECTION_HEADINGS[manageSection]}
+          items={bySection(manageSection)}
+          onClose={() => setManageSection(null)}
+          onEdit={r => {
+            setManageSection(null);
+            setEditDraft({ initial: r, defaultSection: r.section });
+          }}
+          onDelete={handleDelete}
+        />
       ) : null}
 
       {editDraft ? (
