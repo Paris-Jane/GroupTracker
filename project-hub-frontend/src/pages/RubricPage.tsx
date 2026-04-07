@@ -4,8 +4,9 @@ import {
   createRubricRequirement,
   updateRubricRequirement,
   deleteRubricRequirement,
-  setRubricCompletion,
+  setRubricRequirementCompleted,
 } from '../api/client';
+import { supabase } from '../lib/supabase';
 import type { GroupMember, RubricRequirement, RubricSection } from '../types';
 import { RUBRIC_SECTIONS } from '../types';
 import RubricBulkImportModal from '../components/rubric/RubricBulkImportModal';
@@ -96,35 +97,45 @@ export default function RubricPage({ currentMember }: Props) {
   const [editDraft, setEditDraft] = useState<{ initial: RubricRequirement | null; defaultSection: RubricSection } | null>(
     null,
   );
-  const [toggleBusy, setToggleBusy] = useState<number | null>(null);
-
-  const memberId = currentMember?.id;
 
   const load = useCallback(() => {
-    if (memberId == null) return;
     setLoadError(null);
-    getRubricRequirements(memberId)
+    getRubricRequirements()
       .then(setItems)
       .catch(e => setLoadError((e as Error).message));
-  }, [memberId]);
+  }, []);
 
   useEffect(() => {
     load();
   }, [load]);
 
+  useEffect(() => {
+    const channel = supabase
+      .channel('rubric_requirements_sync')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'rubric_requirements' },
+        () => {
+          getRubricRequirements()
+            .then(setItems)
+            .catch(() => {});
+        },
+      )
+      .subscribe();
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, []);
+
   const bySection = (s: RubricSection) => items.filter(r => r.section === s);
 
-  const handleToggle = async (r: RubricRequirement, done: boolean) => {
-    if (!memberId) return;
-    setToggleBusy(r.id);
-    try {
-      await setRubricCompletion(r.id, memberId, done);
-      setItems(prev => prev.map(x => (x.id === r.id ? { ...x, completedByMe: done } : x)));
-    } catch {
-      /* keep UI unchanged */
-    } finally {
-      setToggleBusy(null);
-    }
+  const handleToggle = (r: RubricRequirement, done: boolean) => {
+    setLoadError(null);
+    setItems(prev => prev.map(x => (x.id === r.id ? { ...x, isCompleted: done } : x)));
+    void setRubricRequirementCompleted(r.id, done).catch(() => {
+      setItems(prev => prev.map(x => (x.id === r.id ? { ...x, isCompleted: !done } : x)));
+      setLoadError('Could not save checkbox. Try again.');
+    });
   };
 
   const handleSaveEdit = async (d: { section: RubricSection; body: string }) => {
@@ -132,10 +143,10 @@ export default function RubricPage({ currentMember }: Props) {
     try {
       if (editDraft.initial) {
         const updated = await updateRubricRequirement(editDraft.initial.id, d);
-        setItems(prev => prev.map(x => (x.id === updated.id ? { ...updated, completedByMe: x.completedByMe } : x)));
+        setItems(prev => prev.map(x => (x.id === updated.id ? updated : x)));
       } else {
         const created = await createRubricRequirement(d);
-        setItems(prev => [...prev, { ...created, completedByMe: false }].sort(sortRubricRows));
+        setItems(prev => [...prev, created].sort(sortRubricRows));
       }
       setEditDraft(null);
     } catch (e) {
@@ -159,7 +170,7 @@ export default function RubricPage({ currentMember }: Props) {
         <div>
           <h1 className="page-title">Rubric</h1>
           <p className="page-subtitle">
-            Checklist by course area. Checkboxes are personal; requirements are shared for the project.
+            Checklist by course area. Checked items are shared for the whole team (everyone sees the same progress).
           </p>
         </div>
         <div className="page-actions">
@@ -190,17 +201,21 @@ export default function RubricPage({ currentMember }: Props) {
               ) : (
                 bySection(section).map(r => (
                   <li key={r.id} className="rubric-item-row">
-                    <label className="rubric-item-check">
+                    <div className="rubric-item-main">
                       <input
+                        id={`rubric-check-${r.id}`}
                         type="checkbox"
-                        checked={!!r.completedByMe}
-                        disabled={toggleBusy === r.id || !memberId}
-                        onChange={e => void handleToggle(r, e.target.checked)}
+                        className="rubric-item-checkbox"
+                        checked={r.isCompleted}
+                        onChange={e => handleToggle(r, e.target.checked)}
                       />
-                      <span className={`rubric-item-body${r.completedByMe ? ' rubric-item-body--done' : ''}`}>
+                      <label
+                        htmlFor={`rubric-check-${r.id}`}
+                        className={`rubric-item-text${r.isCompleted ? ' rubric-item-text--done' : ''}`}
+                      >
                         {r.body}
-                      </span>
-                    </label>
+                      </label>
+                    </div>
                     <div className="rubric-item-actions">
                       <button type="button" className="btn btn-ghost btn-xs" onClick={() => setEditDraft({ initial: r, defaultSection: section })}>
                         Edit

@@ -831,8 +831,6 @@ tr:hover td { background: var(--surface-hover); }
 
 .rubric-column {
   min-width: 0;
-  /* .card already provides padding; keep column content bounded */
-  overflow-wrap: anywhere;
 }
 
 .rubric-column-head {
@@ -876,37 +874,42 @@ tr:hover td { background: var(--surface-hover); }
   padding-bottom: 0;
 }
 
-/* Override global `label { display: block }` and fix flex min-width so text wraps inside grid cells */
-label.rubric-item-check {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  cursor: pointer;
-  margin: 0;
-  font-weight: 400;
+/* Grid (not flex-basis:0) keeps the text column a sane width — avoids one-char-per-line bugs */
+.rubric-item-main {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  column-gap: 6px;
+  row-gap: 0;
+  align-items: start;
   min-width: 0;
   width: 100%;
-  max-width: 100%;
   box-sizing: border-box;
 }
 
-.rubric-item-check input[type='checkbox'] {
-  margin-top: 3px;
+.rubric-item-checkbox {
+  margin: 2px 0 0;
+  width: 16px;
+  height: 16px;
   flex-shrink: 0;
+  cursor: pointer;
 }
 
-.rubric-item-body {
-  flex: 1 1 0%;
-  min-width: 0;
-  max-width: 100%;
+label.rubric-item-text {
+  display: block;
+  margin: 0;
+  padding: 0;
+  font-weight: 400;
   font-size: 13px;
   line-height: 1.45;
+  min-width: 0;
+  max-width: 100%;
+  cursor: pointer;
   overflow-wrap: break-word;
   word-wrap: break-word;
-  word-break: break-word;
+  word-break: normal;
 }
 
-.rubric-item-body--done {
+.rubric-item-text--done {
   color: var(--text-muted);
   text-decoration: line-through;
 }
@@ -914,7 +917,7 @@ label.rubric-item-check {
 .rubric-item-actions {
   display: flex;
   gap: 4px;
-  padding-left: 26px;
+  padding-left: 22px;
 }
 
 .rubric-bulk-preview-list {

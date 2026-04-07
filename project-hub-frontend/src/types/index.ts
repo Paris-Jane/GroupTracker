@@ -214,8 +214,8 @@ export interface RubricRequirement {
   sortOrder: number;
   createdAt: string;
   updatedAt: string;
-  /** Set when loaded with a member id: whether that member checked this off. */
-  completedByMe?: boolean;
+  /** Shared for the whole team: anyone toggling updates this for everyone. */
+  isCompleted: boolean;
 }
 
 /** One row from AI bulk-import JSON (`text` or `body`). */
