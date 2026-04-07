@@ -21,11 +21,13 @@ import type {
   QuickLink,
   ResourceItemRow,
   LoginItem,
+  LoginItemCategory,
   TextNote,
   GroupMember,
   ResourceSection,
   ClassLinkCategory,
 } from '../types';
+import { LOGIN_ITEM_CATEGORIES } from '../types';
 
 interface Props {
   currentMember: GroupMember | null;
@@ -38,6 +40,16 @@ const CLASS_LABELS: Record<ClassLinkCategory, string> = {
   Cyber414: '414 Cyber',
   MLR455: '455 ML',
 };
+
+const LOGIN_SECTION_LABELS: Record<LoginItemCategory, string> = {
+  Website: 'Website Logins',
+  Supabase: 'Supabase Logins',
+  Other: 'Other Logins',
+};
+
+type LoginEditTarget =
+  | { mode: 'edit'; item: LoginItem }
+  | { mode: 'new'; category: LoginItemCategory };
 
 type ManageScope =
   | { kind: 'quick' }
@@ -66,9 +78,24 @@ export default function ResourcesPage({}: Props) {
   const [editingLink, setEditingLink] = useState<QuickLink | null | 'new'>(null);
   type ResourceDraft = Partial<ResourceItemRow> & { section: ResourceSection };
   const [editingResource, setEditingResource] = useState<ResourceDraft | ResourceItemRow | null>(null);
-  const [editingLogin, setEditingLogin] = useState<LoginItem | 'new' | null>(null);
+  const [loginEdit, setLoginEdit] = useState<LoginEditTarget | null>(null);
   const [editingNote, setEditingNote] = useState<TextNote | 'new' | null>(null);
   const [manageScope, setManageScope] = useState<ManageScope | null>(null);
+
+  const loginsByCategory = useMemo(() => {
+    const m: Record<LoginItemCategory, LoginItem[]> = {
+      Website: [],
+      Supabase: [],
+      Other: [],
+    };
+    for (const l of logins) {
+      m[l.loginCategory].push(l);
+    }
+    for (const cat of LOGIN_ITEM_CATEGORIES) {
+      m[cat].sort((a, b) => a.sortOrder - b.sortOrder || a.label.localeCompare(b.label));
+    }
+    return m;
+  }, [logins]);
 
   const load = () => {
     getLinks().then(setLinks);
@@ -196,51 +223,68 @@ export default function ResourcesPage({}: Props) {
       </section>
 
       <section className="panel">
-        <div className="flex-between mb-3">
+        <div className="mb-3">
           <SectionTitle>Logins</SectionTitle>
-          <button type="button" className="btn btn-primary btn-sm" onClick={() => setEditingLogin('new')}>
-            Add login
-          </button>
+          <p className="text-muted text-sm mt-1 mb-0">
+            Store shared credentials here. Use copy buttons to paste safely. Entries are grouped by type.
+          </p>
         </div>
-        {logins.length === 0 ? (
-          <p className="empty-hint">Store shared credentials here. Use copy buttons to paste safely.</p>
-        ) : (
-          <div className="login-grid">
-            {logins.map(l => (
-              <div key={l.id} className="login-tile">
-                <div className="login-tile-head">{l.label}</div>
-                {l.url && (
-                  <a href={l.url} target="_blank" rel="noreferrer" className="text-sm">
-                    Open site
-                  </a>
-                )}
-                <div className="login-field">
-                  <span className="text-muted text-xs">Username</span>
-                  <code>{l.username}</code>
-                  <button type="button" className="btn btn-secondary btn-xs" onClick={() => copyText(l.username)}>
-                    Copy
-                  </button>
-                </div>
-                <div className="login-field">
-                  <span className="text-muted text-xs">Password</span>
-                  <code>••••••••</code>
-                  <button type="button" className="btn btn-secondary btn-xs" onClick={() => copyText(l.password)}>
-                    Copy
-                  </button>
-                </div>
-                {l.notes && <p className="text-sm text-muted">{l.notes}</p>}
-                <div className="resource-actions mt-2">
-                  <button type="button" className="btn btn-ghost btn-xs" onClick={() => setEditingLogin(l)}>
-                    Edit
-                  </button>
-                  <button type="button" className="btn btn-ghost btn-xs" onClick={() => deleteLoginItem(l.id).then(load)}>
-                    Delete
-                  </button>
-                </div>
+        {LOGIN_ITEM_CATEGORIES.map(cat => {
+          const rows = loginsByCategory[cat];
+          return (
+            <div key={cat} className="login-subsection">
+              <div className="flex-between mb-2">
+                <h3 className="login-subsection-title">{LOGIN_SECTION_LABELS[cat]}</h3>
+                <button
+                  type="button"
+                  className="btn btn-primary btn-sm"
+                  onClick={() => setLoginEdit({ mode: 'new', category: cat })}
+                >
+                  Add
+                </button>
               </div>
-            ))}
-          </div>
-        )}
+              {rows.length === 0 ? (
+                <p className="empty-hint text-sm">No entries in this group yet.</p>
+              ) : (
+                <div className="login-grid">
+                  {rows.map(l => (
+                    <div key={l.id} className="login-tile">
+                      <div className="login-tile-head">{l.label}</div>
+                      {l.url && (
+                        <a href={l.url} target="_blank" rel="noreferrer" className="text-sm">
+                          Open site
+                        </a>
+                      )}
+                      <div className="login-field">
+                        <span className="text-muted text-xs">Username</span>
+                        <code>{l.username}</code>
+                        <button type="button" className="btn btn-secondary btn-xs" onClick={() => copyText(l.username)}>
+                          Copy
+                        </button>
+                      </div>
+                      <div className="login-field">
+                        <span className="text-muted text-xs">Password</span>
+                        <code>••••••••</code>
+                        <button type="button" className="btn btn-secondary btn-xs" onClick={() => copyText(l.password)}>
+                          Copy
+                        </button>
+                      </div>
+                      {l.notes && <p className="text-sm text-muted">{l.notes}</p>}
+                      <div className="resource-actions mt-2">
+                        <button type="button" className="btn btn-ghost btn-xs" onClick={() => setLoginEdit({ mode: 'edit', item: l })}>
+                          Edit
+                        </button>
+                        <button type="button" className="btn btn-ghost btn-xs" onClick={() => deleteLoginItem(l.id).then(load)}>
+                          Delete
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })}
       </section>
 
       <section className="panel">
@@ -374,13 +418,14 @@ export default function ResourcesPage({}: Props) {
         />
       )}
 
-      {editingLogin && (
+      {loginEdit && (
         <LoginModal
-          item={editingLogin === 'new' ? null : editingLogin}
-          onClose={() => setEditingLogin(null)}
+          key={loginEdit.mode === 'edit' ? loginEdit.item.id : `new-${loginEdit.category}`}
+          target={loginEdit}
+          onClose={() => setLoginEdit(null)}
           onSave={async d => {
             await saveLoginItem(d);
-            setEditingLogin(null);
+            setLoginEdit(null);
             load();
           }}
         />
@@ -713,20 +758,24 @@ function ResourceModal({
 }
 
 function LoginModal({
-  item,
+  target,
   onClose,
   onSave,
 }: {
-  item: LoginItem | null;
+  target: LoginEditTarget;
   onClose: () => void;
   onSave: (d: Omit<LoginItem, 'id'> & { id?: number }) => void | Promise<void>;
 }) {
+  const item = target.mode === 'edit' ? target.item : null;
   const [label, setLabel] = useState(item?.label ?? '');
   const [username, setUsername] = useState(item?.username ?? '');
   const [password, setPassword] = useState(item?.password ?? '');
   const [url, setUrl] = useState(item?.url ?? '');
   const [notes, setNotes] = useState(item?.notes ?? '');
   const [sortOrder, setSortOrder] = useState(item?.sortOrder ?? 0);
+  const [loginCategory, setLoginCategory] = useState<LoginItemCategory>(
+    item?.loginCategory ?? (target.mode === 'new' ? target.category : 'Other'),
+  );
   return (
     <div className="modal-overlay">
       <div className="modal">
@@ -737,6 +786,20 @@ function LoginModal({
           </button>
         </div>
         <div className="modal-body">
+          <div className="form-row">
+            <label htmlFor="login-modal-group">Group</label>
+            <select
+              id="login-modal-group"
+              value={loginCategory}
+              onChange={e => setLoginCategory(e.target.value as LoginItemCategory)}
+            >
+              {LOGIN_ITEM_CATEGORIES.map(c => (
+                <option key={c} value={c}>
+                  {LOGIN_SECTION_LABELS[c]}
+                </option>
+              ))}
+            </select>
+          </div>
           <div className="form-row">
             <label>Label</label>
             <input value={label} onChange={e => setLabel(e.target.value)} />
@@ -770,7 +833,18 @@ function LoginModal({
             type="button"
             className="btn btn-primary"
             disabled={!label.trim()}
-            onClick={() => onSave({ id: item?.id, label, username, password, url: url || undefined, notes: notes || undefined, sortOrder })}
+            onClick={() =>
+              onSave({
+                id: item?.id,
+                label,
+                username,
+                password,
+                url: url || undefined,
+                notes: notes || undefined,
+                sortOrder,
+                loginCategory,
+              })
+            }
           >
             Save
           </button>

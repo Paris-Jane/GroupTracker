@@ -1138,6 +1138,21 @@ tr:hover td { background: var(--surface-hover); }
   margin-left: 8px;
 }
 
+.login-subsection {
+  margin-bottom: 22px;
+}
+
+.login-subsection:last-child {
+  margin-bottom: 0;
+}
+
+.login-subsection-title {
+  font-size: 14px;
+  font-weight: 600;
+  margin: 0;
+  color: var(--text);
+}
+
 .login-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));

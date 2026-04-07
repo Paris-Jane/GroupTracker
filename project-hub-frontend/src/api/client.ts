@@ -7,6 +7,7 @@ import type {
   QuickLink,
   ResourceItemRow,
   LoginItem,
+  LoginItemCategory,
   TextNote,
   ScheduleItem,
   TaskUpdate,
@@ -1171,18 +1172,24 @@ export async function bulkImportRubricRequirements(
 
 // ── Login items & text notes ────────────────────────────────────────────────
 
-export async function getLoginItems(): Promise<LoginItem[]> {
-  const { data, error } = await supabase.from('login_items').select('*').order('sort_order').order('label');
-  if (error) err(error, 'Failed to load logins');
-  return (data as {
-    id: number;
-    label: string;
-    username: string;
-    password: string;
-    url: string | null;
-    notes: string | null;
-    sort_order: number;
-  }[]).map(r => ({
+type LoginRow = {
+  id: number;
+  label: string;
+  username: string;
+  password: string;
+  url: string | null;
+  notes: string | null;
+  sort_order: number;
+  login_category?: string | null;
+};
+
+function mapLoginCategory(raw: string | null | undefined): LoginItemCategory {
+  if (raw === 'Website' || raw === 'Supabase' || raw === 'Other') return raw;
+  return 'Other';
+}
+
+function mapLoginItem(r: LoginRow): LoginItem {
+  return {
     id: Number(r.id),
     label: r.label,
     username: r.username,
@@ -1190,7 +1197,32 @@ export async function getLoginItems(): Promise<LoginItem[]> {
     url: r.url ?? undefined,
     notes: r.notes ?? undefined,
     sortOrder: r.sort_order,
-  }));
+    loginCategory: mapLoginCategory(r.login_category),
+  };
+}
+
+async function nextLoginSortOrder(category: LoginItemCategory): Promise<number> {
+  const { data, error } = await supabase
+    .from('login_items')
+    .select('sort_order')
+    .eq('login_category', category)
+    .order('sort_order', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) err(error, 'Failed to read login order');
+  const max = data?.sort_order != null ? Number(data.sort_order) : -1;
+  return max + 1;
+}
+
+export async function getLoginItems(): Promise<LoginItem[]> {
+  const { data, error } = await supabase
+    .from('login_items')
+    .select('*')
+    .order('login_category', { ascending: true })
+    .order('sort_order', { ascending: true })
+    .order('label');
+  if (error) err(error, 'Failed to load logins');
+  return ((data as LoginRow[]) ?? []).map(mapLoginItem);
 }
 
 export async function saveLoginItem(d: Omit<LoginItem, 'id'> & { id?: number }): Promise<LoginItem> {
@@ -1204,22 +1236,15 @@ export async function saveLoginItem(d: Omit<LoginItem, 'id'> & { id?: number }):
         url: d.url ?? null,
         notes: d.notes ?? null,
         sort_order: d.sortOrder,
+        login_category: d.loginCategory,
       })
       .eq('id', d.id)
       .select()
       .single();
     if (error || !data) err(error, 'Failed to update');
-    const r = data as { id: number; label: string; username: string; password: string; url: string | null; notes: string | null; sort_order: number };
-    return {
-      id: Number(r.id),
-      label: r.label,
-      username: r.username,
-      password: r.password,
-      url: r.url ?? undefined,
-      notes: r.notes ?? undefined,
-      sortOrder: r.sort_order,
-    };
+    return mapLoginItem(data as LoginRow);
   }
+  const sortOrder = d.sortOrder > 0 ? d.sortOrder : await nextLoginSortOrder(d.loginCategory);
   const { data, error } = await supabase
     .from('login_items')
     .insert({
@@ -1228,21 +1253,13 @@ export async function saveLoginItem(d: Omit<LoginItem, 'id'> & { id?: number }):
       password: d.password,
       url: d.url ?? null,
       notes: d.notes ?? null,
-      sort_order: d.sortOrder,
+      sort_order: sortOrder,
+      login_category: d.loginCategory,
     })
     .select()
     .single();
   if (error || !data) err(error, 'Failed to create');
-  const r = data as { id: number; label: string; username: string; password: string; url: string | null; notes: string | null; sort_order: number };
-  return {
-    id: Number(r.id),
-    label: r.label,
-    username: r.username,
-    password: r.password,
-    url: r.url ?? undefined,
-    notes: r.notes ?? undefined,
-    sortOrder: r.sort_order,
-  };
+  return mapLoginItem(data as LoginRow);
 }
 
 export async function deleteLoginItem(id: number): Promise<void> {

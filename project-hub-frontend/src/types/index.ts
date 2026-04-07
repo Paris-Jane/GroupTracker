@@ -87,6 +87,11 @@ export interface ResourceItemRow {
   updatedAt: string;
 }
 
+/** Subsection on Resources → Logins */
+export type LoginItemCategory = 'Website' | 'Supabase' | 'Other';
+
+export const LOGIN_ITEM_CATEGORIES: readonly LoginItemCategory[] = ['Website', 'Supabase', 'Other'];
+
 export interface LoginItem {
   id: number;
   label: string;
@@ -95,6 +100,7 @@ export interface LoginItem {
   url?: string;
   notes?: string;
   sortOrder: number;
+  loginCategory: LoginItemCategory;
 }
 
 export interface TextNote {
