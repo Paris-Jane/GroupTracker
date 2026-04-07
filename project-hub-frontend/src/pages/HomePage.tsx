@@ -12,6 +12,7 @@ import {
 } from '../api/client';
 import type { TaskItem, TaskUpdate, GroupMember, TaskStatus, CreateTaskDto, SprintGoal } from '../types';
 import UserAvatar from '../components/common/UserAvatar';
+import TaskStatusDot from '../components/common/TaskStatusDot';
 import TaskFormModal from '../components/Tasks/TaskFormModal';
 import { useAuth } from '../auth/AuthContext';
 import { inferCurrentSprintNumber } from '../lib/sprintCurrent';
@@ -113,24 +114,6 @@ function HomeStatLinkCard({
         </button>
       )}
     </div>
-  );
-}
-
-function StatusDot({ status, onClick }: { status: TaskStatus; onClick: () => void }) {
-  const map = {
-    NotStarted: { cls: 'todo', title: 'To do — click to start' },
-    InProgress: { cls: 'progress', title: 'In progress — click to complete' },
-    Completed: { cls: 'done', title: 'Completed — click to move back to to do' },
-  };
-  const { cls, title } = map[status];
-  return (
-    <button
-      type="button"
-      className={`home-status-dot home-status-dot--${cls}`}
-      onClick={onClick}
-      title={title}
-      aria-label={title}
-    />
   );
 }
 
@@ -323,7 +306,7 @@ export default function HomePage() {
                     key={t.id}
                     className={`home-task-item${overdue ? ' home-task-item--overdue' : ''}${t.status === 'Completed' ? ' home-task-item--done' : ''}`}
                   >
-                    <StatusDot status={t.status} onClick={() => void cycleStatus(t)} />
+                    <TaskStatusDot status={t.status} onClick={() => void cycleStatus(t)} />
 
                     <button type="button" className="home-task-body" onClick={() => onTaskBodyClick(t)}>
                       <span className={`home-task-name${t.status === 'Completed' ? ' home-task-name--done' : ''}`}>

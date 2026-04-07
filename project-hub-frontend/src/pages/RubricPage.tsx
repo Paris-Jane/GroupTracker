@@ -4,10 +4,11 @@ import {
   createRubricRequirement,
   updateRubricRequirement,
   deleteRubricRequirement,
-  setRubricRequirementCompleted,
+  setRubricRequirementProgressStatus,
 } from '../api/client';
 import { supabase } from '../lib/supabase';
-import type { GroupMember, RubricRequirement, RubricSection } from '../types';
+import TaskStatusDot from '../components/common/TaskStatusDot';
+import type { GroupMember, RubricRequirement, RubricSection, TaskStatus } from '../types';
 import { RUBRIC_SECTIONS } from '../types';
 import RubricBulkImportModal from '../components/rubric/RubricBulkImportModal';
 
@@ -23,6 +24,19 @@ const SECTION_HEADINGS: Record<RubricSection, string> = {
   '455': '455',
   presentation: 'Presentation',
 };
+
+function nextRubricProgressStatus(s: TaskStatus): TaskStatus {
+  if (s === 'NotStarted') return 'InProgress';
+  if (s === 'InProgress') return 'Completed';
+  return 'NotStarted';
+}
+
+function rubricSectionProgressStats(rows: RubricRequirement[]) {
+  const total = rows.length;
+  const completed = rows.filter(r => r.progressStatus === 'Completed').length;
+  const pct = total ? Math.round((completed / total) * 100) : 0;
+  return { total, completed, pct };
+}
 
 function RequirementEditModal({
   initial,
@@ -187,12 +201,14 @@ export default function RubricPage({ currentMember }: Props) {
 
   const bySection = (s: RubricSection) => items.filter(r => r.section === s);
 
-  const handleToggle = (r: RubricRequirement, done: boolean) => {
+  const handleCycleProgress = (r: RubricRequirement) => {
+    const prev = r.progressStatus;
+    const next = nextRubricProgressStatus(prev);
     setLoadError(null);
-    setItems(prev => prev.map(x => (x.id === r.id ? { ...x, isCompleted: done } : x)));
-    void setRubricRequirementCompleted(r.id, done).catch(() => {
-      setItems(prev => prev.map(x => (x.id === r.id ? { ...x, isCompleted: !done } : x)));
-      setLoadError('Could not save checkbox. Try again.');
+    setItems(prevItems => prevItems.map(x => (x.id === r.id ? { ...x, progressStatus: next } : x)));
+    void setRubricRequirementProgressStatus(r.id, next).catch(() => {
+      setItems(prevItems => prevItems.map(x => (x.id === r.id ? { ...x, progressStatus: prev } : x)));
+      setLoadError('Could not save progress. Try again.');
     });
   };
 
@@ -228,7 +244,8 @@ export default function RubricPage({ currentMember }: Props) {
         <div>
           <h1 className="page-title">Rubric</h1>
           <p className="page-subtitle">
-            Checklist by course area. Checked items are shared for the whole team (everyone sees the same progress).
+            Same flow as home tasks: click the dot once for in progress, twice for done, three times to reset. Progress
+            is shared for the whole team.
           </p>
         </div>
         <div className="page-actions">
@@ -241,50 +258,69 @@ export default function RubricPage({ currentMember }: Props) {
       {loadError ? <p className="form-error mb-3">{loadError}</p> : null}
 
       <div className="rubric-columns">
-        {RUBRIC_SECTIONS.map(section => (
-          <section key={section} className="rubric-column card">
-            <div className="rubric-column-head">
-              <h2 className="panel-heading rubric-column-title">{SECTION_HEADINGS[section]}</h2>
-              <span className="rubric-column-actions">
-                <button
-                  type="button"
-                  className="btn btn-ghost btn-xs"
-                  onClick={() => setEditDraft({ initial: null, defaultSection: section })}
-                >
-                  + Add
-                </button>
-                <button type="button" className="btn btn-ghost btn-xs" onClick={() => setManageSection(section)}>
-                  Manage
-                </button>
-              </span>
-            </div>
-            <ul className="rubric-item-list">
-              {bySection(section).length === 0 ? (
-                <li className="empty-hint text-sm">No items yet.</li>
-              ) : (
-                bySection(section).map(r => (
-                  <li key={r.id} className="rubric-item-row">
-                    <div className="rubric-item-main">
-                      <input
-                        id={`rubric-check-${r.id}`}
-                        type="checkbox"
-                        className="rubric-item-checkbox"
-                        checked={r.isCompleted}
-                        onChange={e => handleToggle(r, e.target.checked)}
-                      />
-                      <label
-                        htmlFor={`rubric-check-${r.id}`}
-                        className={`rubric-item-text${r.isCompleted ? ' rubric-item-text--done' : ''}`}
-                      >
-                        {r.body}
-                      </label>
-                    </div>
-                  </li>
-                ))
-              )}
-            </ul>
-          </section>
-        ))}
+        {RUBRIC_SECTIONS.map(section => {
+          const sectionRows = bySection(section);
+          const sp = rubricSectionProgressStats(sectionRows);
+          return (
+            <section key={section} className="rubric-column card">
+              <div className="rubric-column-head">
+                <h2 className="panel-heading rubric-column-title">{SECTION_HEADINGS[section]}</h2>
+                <span className="rubric-column-actions">
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-xs"
+                    onClick={() => setEditDraft({ initial: null, defaultSection: section })}
+                  >
+                    + Add
+                  </button>
+                  <button type="button" className="btn btn-ghost btn-xs" onClick={() => setManageSection(section)}>
+                    Manage
+                  </button>
+                </span>
+              </div>
+              {sp.total > 0 ? (
+                <div className="rubric-column-progress">
+                  <div className="home-progress-bar">
+                    <div
+                      className={`home-progress-fill${sp.pct === 100 ? ' home-progress-fill--complete' : ''}`}
+                      style={{ width: `${sp.pct}%` }}
+                    />
+                  </div>
+                  <div className="rubric-column-progress-label">
+                    {sp.completed} of {sp.total} done ({sp.pct}%)
+                  </div>
+                </div>
+              ) : null}
+              <ul className="rubric-item-list">
+                {sectionRows.length === 0 ? (
+                  <li className="empty-hint text-sm">No items yet.</li>
+                ) : (
+                  sectionRows.map(r => (
+                    <li
+                      key={r.id}
+                      className={`rubric-item-row${r.progressStatus === 'Completed' ? ' rubric-item-row--done' : ''}`}
+                    >
+                      <div className="rubric-item-main">
+                        <TaskStatusDot status={r.progressStatus} onClick={() => handleCycleProgress(r)} />
+                        <span
+                          className={`rubric-item-text${
+                            r.progressStatus === 'Completed'
+                              ? ' rubric-item-text--done'
+                              : r.progressStatus === 'InProgress'
+                                ? ' rubric-item-text--progress'
+                                : ''
+                          }`}
+                        >
+                          {r.body}
+                        </span>
+                      </div>
+                    </li>
+                  ))
+                )}
+              </ul>
+            </section>
+          );
+        })}
       </div>
 
       {bulkOpen && currentMember ? (

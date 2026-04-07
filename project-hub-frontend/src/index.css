@@ -850,6 +850,17 @@ tr:hover td { background: var(--surface-hover); }
   flex-shrink: 0;
 }
 
+.rubric-column-progress {
+  margin-bottom: 10px;
+}
+
+.rubric-column-progress-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 4px;
+  text-align: center;
+}
+
 .rubric-column-title {
   margin: 0;
   font-size: 1rem;
@@ -894,15 +905,15 @@ tr:hover td { background: var(--surface-hover); }
   box-sizing: border-box;
 }
 
-.rubric-item-checkbox {
-  margin: 2px 0 0;
-  width: 16px;
-  height: 16px;
-  flex-shrink: 0;
-  cursor: pointer;
+.rubric-item-main .home-status-dot {
+  margin-top: 1px;
 }
 
-label.rubric-item-text {
+.rubric-item-row--done {
+  opacity: 0.75;
+}
+
+.rubric-item-text {
   display: block;
   margin: 0;
   padding: 0;
@@ -911,10 +922,14 @@ label.rubric-item-text {
   line-height: 1.45;
   min-width: 0;
   max-width: 100%;
-  cursor: pointer;
   overflow-wrap: break-word;
   word-wrap: break-word;
   word-break: normal;
+}
+
+.rubric-item-text--progress {
+  color: var(--text);
+  font-weight: 500;
 }
 
 .rubric-item-text--done {

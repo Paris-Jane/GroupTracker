@@ -1031,10 +1031,23 @@ type RubricReqRow = {
   section: string;
   body: string;
   sort_order: number;
+  progress_status?: string | null;
+  /** Legacy before progress_status migration */
   is_completed?: boolean | null;
   created_at: string;
   updated_at: string;
 };
+
+function normalizeRubricProgressStatus(
+  progressStatus: string | null | undefined,
+  legacyCompleted?: boolean | null,
+): TaskStatus {
+  if (progressStatus === 'NotStarted' || progressStatus === 'InProgress' || progressStatus === 'Completed') {
+    return progressStatus;
+  }
+  if (legacyCompleted) return 'Completed';
+  return 'NotStarted';
+}
 
 function mapRubricRequirement(r: RubricReqRow): RubricRequirement {
   return {
@@ -1044,7 +1057,7 @@ function mapRubricRequirement(r: RubricReqRow): RubricRequirement {
     sortOrder: r.sort_order ?? 0,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
-    isCompleted: !!r.is_completed,
+    progressStatus: normalizeRubricProgressStatus(r.progress_status, r.is_completed),
   };
 }
 
@@ -1085,7 +1098,7 @@ export async function createRubricRequirement(p: {
       section: p.section,
       body: p.body.trim(),
       sort_order: sortOrder,
-      is_completed: false,
+      progress_status: 'NotStarted',
       created_at: now,
       updated_at: now,
     })
@@ -1112,12 +1125,15 @@ export async function deleteRubricRequirement(id: number): Promise<void> {
   if (error) err(error, 'Failed to delete rubric item');
 }
 
-export async function setRubricRequirementCompleted(requirementId: number, completed: boolean): Promise<void> {
+export async function setRubricRequirementProgressStatus(
+  requirementId: number,
+  status: TaskStatus,
+): Promise<void> {
   const { error } = await supabase
     .from('rubric_requirements')
-    .update({ is_completed: completed, updated_at: new Date().toISOString() })
+    .update({ progress_status: status, updated_at: new Date().toISOString() })
     .eq('id', requirementId);
-  if (error) err(error, 'Failed to update rubric completion');
+  if (error) err(error, 'Failed to update rubric progress');
 }
 
 export async function bulkImportRubricRequirements(
@@ -1143,7 +1159,7 @@ export async function bulkImportRubricRequirements(
       section: it.section,
       body: it.body.trim(),
       sort_order: maxBy[it.section],
-      is_completed: false,
+      progress_status: 'NotStarted',
       created_at: now,
       updated_at: now,
     };

@@ -214,8 +214,8 @@ export interface RubricRequirement {
   sortOrder: number;
   createdAt: string;
   updatedAt: string;
-  /** Shared for the whole team: anyone toggling updates this for everyone. */
-  isCompleted: boolean;
+  /** Shared team-wide; cycles like home tasks: NotStarted → InProgress → Completed → NotStarted. */
+  progressStatus: TaskStatus;
 }
 
 /** One row from AI bulk-import JSON (`text` or `body`). */
